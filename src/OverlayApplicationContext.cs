@@ -36,6 +36,8 @@ namespace CodexQuotaOverlay
             IntPtr unusedTaskLight = taskLight.Handle;
             taskLight.ShowTaskLight();
             taskNotifier = new TaskLightNotifier();
+            taskLight.TaskActivated += OnTaskActivated;
+            taskNotifier.TaskActivated += OnTaskActivated;
 
             trackingTimer = new Timer();
             trackingTimer.Interval = 120;
@@ -169,6 +171,20 @@ namespace CodexQuotaOverlay
             taskNotifier.Update(snapshot);
         }
 
+        private void OnTaskActivated(object sender, TaskActivatedEventArgs args)
+        {
+            if (disposed || args == null || args.Task == null)
+            {
+                return;
+            }
+
+            string status;
+            if (!CodexThreadNavigator.TryOpen(args.Task, out status))
+            {
+                taskNotifier.ShowNavigationError(args.Task, status);
+            }
+        }
+
         private void OnTaskConnectionChanged(object sender, TaskConnectionEventArgs args)
         {
             if (disposed || taskLight.IsDisposed || sender != appServerClient || args.Connected)
@@ -251,6 +267,8 @@ namespace CodexQuotaOverlay
             StopAppServerClient();
             overlay.HideOverlay();
             overlay.Dispose();
+            taskLight.TaskActivated -= OnTaskActivated;
+            taskNotifier.TaskActivated -= OnTaskActivated;
             taskLight.CloseDetails();
             taskLight.Hide();
             taskLight.Dispose();

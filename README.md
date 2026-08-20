@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Yueyuyu/codex-desktop-companion?display_name=tag&sort=semver)](https://github.com/Yueyuyu/codex-desktop-companion/releases/latest)
 
-Codex Desktop Companion 是一个独立的 Windows 桌面伴侣，把 Codex Desktop 暂未直接提供、但需要随时看到的状态放到触手可及的位置。当前公开版本为 [`v1.0.0`](https://github.com/Yueyuyu/codex-desktop-companion/releases/tag/v1.0.0)。
+Codex Desktop Companion 是一个独立的 Windows 桌面伴侣，把 Codex Desktop 暂未直接提供、但需要随时看到的状态放到触手可及的位置。当前公开版本为 [`v1.1.0`](https://github.com/Yueyuyu/codex-desktop-companion/releases/tag/v1.1.0)。
 
 当前包含两个彼此独立的组件：
 
@@ -29,15 +29,21 @@ Codex Desktop Companion 是一个独立的 Windows 桌面伴侣，把 Codex Desk
 
 任务灯是独立桌面小组件，用来显示当前任务的完成情况，而不是逐步展示模型的“执行过程”。提交 Codex 任务后，即使切换去做其他工作，也能从桌面直接判断是否仍在运行、已经完成或需要处理。
 
-![白色紧凑任务灯与任务详情](docs/images/task-light-polished-open.png)
+![Quiet Workspace 白色紧凑任务灯与任务详情](docs/images/task-light-v1.1.0.png)
 
 - 可拖到任意显示器的任意可见位置，松手后自动保存位置；
 - 收起状态显示“需处理”“执行中”“空闲”或“Codex 离线”，并显示对应任务数量；
 - 多个任务同时运行时，以数量汇总，例如“需处理 1｜执行中 2”；
-- 点击任务灯展开详情，显示任务标题、状态和时间；
+- 点击任务灯展开详情，按“需要处理”和“执行中”分组显示任务标题、当前状态与时间；
+- 点击任意任务行，会让 Codex Desktop 直接跳转到对应任务，不再需要从侧栏逐个寻找；
 - 详情面板提供置顶开关，设置会保存在本机；
 - 每 2 秒只读刷新任务状态；
-- 新任务进入“需处理”，或全部执行中任务完成时，发送 Windows 通知。
+- 新任务进入“需处理”，或执行中任务完成时，在当前屏幕右下角弹出明显但不抢焦点的通知；
+- 点击通知可打开对应任务；通知 8 秒后自动收起，自绘窗口不可用时才回退到系统托盘气泡。
+
+| 任务完成 | 需要处理 |
+| --- | --- |
+| ![任务完成通知](docs/images/task-notification-completed-v1.1.0.png) | ![任务需要处理通知](docs/images/task-notification-attention-v1.1.0.png) |
 
 ## 与 Codex 和额度的边界
 
@@ -49,6 +55,8 @@ Codex Desktop 当前安装
         │ 只读 RPC
         ├─ account/rateLimits/read ──> 周额度胶囊
         └─ thread/list + 本机 JSONL ─> 任务灯 / 详情 / 通知
+                                      │ 点击任务或通知
+                                      └─ codex://threads/<UUID> ─> 对应 Codex 任务
 ```
 
 - 不修改、注入或替换 Microsoft Store 中的 Codex 文件；
@@ -127,6 +135,7 @@ codex-desktop-companion/
 ├─ prototypes/          任务灯交互原型，不参与运行
 ├─ docs/                截图、换机、架构和故障排查说明
 ├─ .github/workflows/   Windows 构建与离线自测
+├─ design-qa.md         视觉还原的两轮验收记录
 ├─ VERSION              当前产品版本
 ├─ CHANGELOG.md         版本变化
 ├─ build.ps1            本机编译
@@ -146,7 +155,18 @@ codex-desktop-companion/
 .\verify.ps1 -Development -Offline
 ```
 
-周额度胶囊与任务灯共用 Quiet Workspace 的紧凑密度、圆角、细边、柔和阴影和动效节奏，但按信息类型区分状态表达：额度是单一连续数值，使用整块低饱和胶囊；任务是多个并行类别，使用小面积状态灯和数量。交互原型位于 `prototypes/task-light/index.html`，真实运行界面以 `src/` 为准。
+周额度胶囊与任务灯共用 Quiet Workspace 的紧凑密度、圆角、细边、柔和阴影和动效节奏，但按信息类型区分状态表达：额度是单一连续数值，使用整块低饱和胶囊；任务是多个并行类别，使用小面积状态轨和数量。交互原型位于 `prototypes/task-light/index.html`，真实运行界面以 `src/` 为准。
+
+任务灯与通知的最终还原、两轮修正记录和对比图见 [design-qa.md](design-qa.md)。运行时颜色、字体、图标和动效由 `src/TaskLightVisualStyle.cs` 集中定义；UI Design Lab 与原型只提供设计基准，不会参与安装或运行。
+
+开发者可用下面的探针预览真实 WinForms 渲染与通知状态：
+
+```powershell
+.\build.ps1
+.\bin\CodexQuotaProbe.exe --task-ui-preview .\artifacts\task-light-preview.png
+.\bin\CodexQuotaProbe.exe --notification-preview completed
+.\bin\CodexQuotaProbe.exe --notification-preview attention
+```
 
 当前程序为本机即时编译的未签名可执行文件，杀毒软件或 SmartScreen 可能在首次运行新构建时扫描或提示。
 

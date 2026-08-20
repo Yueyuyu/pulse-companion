@@ -51,6 +51,7 @@ foreach ($requiredFile in @($overlayPath, $probePath)) {
 
 [void](Invoke-CompanionProbe -ProbePath $probePath -Name '额度解析自测' -Arguments @('--self-test') -Required)
 [void](Invoke-CompanionProbe -ProbePath $probePath -Name '任务解析自测' -Arguments @('--task-self-test') -Required)
+[void](Invoke-CompanionProbe -ProbePath $probePath -Name 'Codex 任务深链自测' -Arguments @('--thread-uri-self-test') -Required)
 
 if (-not $Development) {
     $shortcutPath = Get-CompanionStartupShortcut

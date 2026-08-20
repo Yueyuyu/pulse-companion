@@ -3,18 +3,19 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
+using System.IO;
 using System.Windows.Forms;
 
 namespace CodexQuotaOverlay
 {
     internal sealed class TaskLightForm : Form
     {
-        private const int DesignHeight = 40;
-        private const int DesignMixedWidth = 188;
-        private const int DesignAlertWidth = 108;
-        private const int DesignRunningWidth = 106;
+        private const int DesignHeight = 38;
+        private const int DesignMixedWidth = 166;
+        private const int DesignAlertWidth = 96;
+        private const int DesignRunningWidth = 96;
         private const int DesignIdleWidth = 84;
-        private const int DesignOfflineWidth = 124;
+        private const int DesignOfflineWidth = 112;
         private const int DesignPaddingLeft = 12;
         private const int DesignPaddingTop = 10;
         private const int DesignPaddingRight = 12;
@@ -39,6 +40,8 @@ namespace CodexQuotaOverlay
         private bool shownOnce;
         private Point dragStartCursor;
         private Point dragStartLocation;
+
+        public event EventHandler<TaskActivatedEventArgs> TaskActivated;
 
         public TaskLightForm()
         {
@@ -67,6 +70,7 @@ namespace CodexQuotaOverlay
 
             detailsPopup = new TaskLightDetailsForm();
             detailsPopup.AlwaysOnTopChanged += OnAlwaysOnTopChanged;
+            detailsPopup.TaskActivated += ForwardTaskActivated;
             detailsPopup.SetAlwaysOnTop(settings.AlwaysOnTop);
 
             tooltip = new ToolTip();
@@ -184,6 +188,50 @@ namespace CodexQuotaOverlay
             detailsPopup.ClosePopup(false);
         }
 
+        public void ShowDetailsForPreview()
+        {
+            detailsPopup.ShowAnchored(this, GetVisualBoundsScreen(), settings.AlwaysOnTop);
+        }
+
+        public void SavePreviewScreenshot(string outputPath)
+        {
+            if (string.IsNullOrWhiteSpace(outputPath))
+            {
+                return;
+            }
+
+            Rectangle captureBounds = Bounds;
+            if (detailsPopup.Visible)
+            {
+                captureBounds = Rectangle.Union(captureBounds, detailsPopup.Bounds);
+            }
+
+            using (Bitmap lightSurface = RenderSurfaceBitmap())
+            using (Bitmap detailsSurface = detailsPopup.Visible ? detailsPopup.CaptureSurfaceForPreview() : null)
+            using (Bitmap composite = new Bitmap(captureBounds.Width, captureBounds.Height, PixelFormat.Format32bppArgb))
+            using (Graphics graphics = Graphics.FromImage(composite))
+            {
+                // 仅用于视觉 QA 的统一画布，真实桌面背景不属于核心 UI Token。
+                graphics.Clear(Color.FromArgb(232, 238, 234));
+                graphics.DrawImageUnscaled(lightSurface, Left - captureBounds.Left, Top - captureBounds.Top);
+                if (detailsSurface != null)
+                {
+                    graphics.DrawImageUnscaled(
+                        detailsSurface,
+                        detailsPopup.Left - captureBounds.Left,
+                        detailsPopup.Top - captureBounds.Top);
+                }
+
+                string directory = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrWhiteSpace(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                composite.Save(outputPath, ImageFormat.Png);
+            }
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             RenderLayeredWindow();
@@ -287,6 +335,7 @@ namespace CodexQuotaOverlay
         {
             if (disposing)
             {
+                detailsPopup.TaskActivated -= ForwardTaskActivated;
                 tooltip.Dispose();
                 motionTimer.Dispose();
                 detailsPopup.Dispose();
@@ -302,7 +351,16 @@ namespace CodexQuotaOverlay
                 return;
             }
 
-            using (Bitmap bitmap = new Bitmap(ClientSize.Width, ClientSize.Height, PixelFormat.Format32bppArgb))
+            using (Bitmap bitmap = RenderSurfaceBitmap())
+            {
+                byte opacity = (byte)Math.Round(255F * entranceMotion.Current);
+                LayeredWindowRenderer.Present(Handle, Location, bitmap, opacity);
+            }
+        }
+
+        private Bitmap RenderSurfaceBitmap()
+        {
+            Bitmap bitmap = new Bitmap(ClientSize.Width, ClientSize.Height, PixelFormat.Format32bppArgb);
             using (Graphics graphics = Graphics.FromImage(bitmap))
             {
                 graphics.Clear(Color.Transparent);
@@ -314,20 +372,20 @@ namespace CodexQuotaOverlay
                 cardBounds = ScaleBounds(cardBounds, pressScale);
                 cardBounds.Offset(0F, verticalShift);
 
-                UiDrawing.DrawCompactShadow(graphics, cardBounds, SFloat(14F), scale);
+                UiDrawing.DrawCompactShadow(graphics, cardBounds, SFloat(11F), scale);
                 Color backgroundColor = UiDrawing.Blend(
-                    Color.FromArgb(255, 254, 253),
-                    Color.FromArgb(248, 249, 246),
+                    TaskLightVisualStyle.Paper,
+                    TaskLightVisualStyle.SurfaceSubtle,
                     hoverMotion.Current);
                 backgroundColor = UiDrawing.Blend(
                     backgroundColor,
-                    Color.FromArgb(244, 245, 242),
+                    TaskLightVisualStyle.SurfaceSelected,
                     pressMotion.Current);
                 Color borderColor = UiDrawing.Blend(
-                    Color.FromArgb(222, 224, 218),
-                    Color.FromArgb(207, 211, 203),
+                    TaskLightVisualStyle.Border,
+                    TaskLightVisualStyle.BorderStrong,
                     hoverMotion.Current);
-                using (GraphicsPath card = UiDrawing.CreateRoundedPath(cardBounds, SFloat(14F)))
+                using (GraphicsPath card = UiDrawing.CreateRoundedPath(cardBounds, SFloat(11F)))
                 using (SolidBrush background = new SolidBrush(backgroundColor))
                 using (Pen border = new Pen(borderColor, Math.Max(1F, scale)))
                 {
@@ -337,17 +395,16 @@ namespace CodexQuotaOverlay
 
                 DrawStatusContent(graphics, cardBounds);
                 DrawFeedback(graphics, cardBounds);
-
-                byte opacity = (byte)Math.Round(255F * entranceMotion.Current);
-                LayeredWindowRenderer.Present(Handle, Location, bitmap, opacity);
             }
+
+            return bitmap;
         }
 
         private void DrawStatusContent(Graphics graphics, RectangleF cardBounds)
         {
             if (!connected)
             {
-                DrawSegment(graphics, cardBounds, Color.FromArgb(143, 148, 140), "Codex 离线");
+                DrawSegment(graphics, cardBounds, TaskLightVisualStyle.Offline, "Codex 离线");
                 return;
             }
 
@@ -356,7 +413,7 @@ namespace CodexQuotaOverlay
                 float firstWidth = cardBounds.Width / 2F;
                 RectangleF alert = new RectangleF(cardBounds.Left, cardBounds.Top, firstWidth, cardBounds.Height);
                 RectangleF running = new RectangleF(cardBounds.Left + firstWidth, cardBounds.Top, cardBounds.Width - firstWidth, cardBounds.Height);
-                using (Pen separator = new Pen(Color.FromArgb(224, 226, 220), Math.Max(1F, scale)))
+                using (Pen separator = new Pen(TaskLightVisualStyle.Border, Math.Max(1F, scale)))
                 {
                     graphics.DrawLine(
                         separator,
@@ -369,12 +426,12 @@ namespace CodexQuotaOverlay
                 DrawSegment(
                     graphics,
                     alert,
-                    Color.FromArgb(228, 103, 96),
+                    TaskLightVisualStyle.Attention,
                     "需处理 " + snapshot.AttentionCount.ToString(CultureInfo.InvariantCulture));
                 DrawSegment(
                     graphics,
                     running,
-                    Color.FromArgb(229, 154, 49),
+                    TaskLightVisualStyle.Running,
                     "执行中 " + snapshot.RunningCount.ToString(CultureInfo.InvariantCulture));
             }
             else if (snapshot.AttentionCount > 0)
@@ -382,7 +439,7 @@ namespace CodexQuotaOverlay
                 DrawSegment(
                     graphics,
                     cardBounds,
-                    Color.FromArgb(228, 103, 96),
+                    TaskLightVisualStyle.Attention,
                     "需处理 " + snapshot.AttentionCount.ToString(CultureInfo.InvariantCulture));
             }
             else if (snapshot.RunningCount > 0)
@@ -390,44 +447,30 @@ namespace CodexQuotaOverlay
                 DrawSegment(
                     graphics,
                     cardBounds,
-                    Color.FromArgb(229, 154, 49),
+                    TaskLightVisualStyle.Running,
                     "执行中 " + snapshot.RunningCount.ToString(CultureInfo.InvariantCulture));
             }
             else
             {
-                DrawSegment(graphics, cardBounds, Color.FromArgb(73, 143, 99), "空闲");
+                DrawSegment(graphics, cardBounds, TaskLightVisualStyle.Success, "空闲");
             }
         }
 
         private void DrawSegment(Graphics graphics, RectangleF bounds, Color indicatorColor, string text)
         {
-            using (Font font = UiDrawing.CreateFont(SFloat(12F), FontStyle.Bold))
-            using (SolidBrush textBrush = new SolidBrush(Color.FromArgb(47, 50, 45)))
+            using (Font font = TaskLightVisualStyle.CreateSemiboldFont(SFloat(11F)))
+            using (SolidBrush textBrush = new SolidBrush(TaskLightVisualStyle.TextPrimary))
             {
                 SizeF textSize = graphics.MeasureString(text, font, int.MaxValue, StringFormat.GenericTypographic);
-                float dotSize = SFloat(7F);
+                float dotSize = SFloat(8F);
                 float gap = SFloat(7F);
                 float contentWidth = dotSize + gap + textSize.Width;
                 float startX = bounds.Left + (bounds.Width - contentWidth) / 2F;
                 float centerY = bounds.Top + bounds.Height / 2F;
 
-                using (SolidBrush haloBrush = new SolidBrush(Color.FromArgb(34, indicatorColor)))
                 using (SolidBrush indicatorBrush = new SolidBrush(indicatorColor))
-                using (SolidBrush highlightBrush = new SolidBrush(Color.FromArgb(120, 255, 255, 255)))
                 {
-                    graphics.FillEllipse(
-                        haloBrush,
-                        startX - SFloat(3F),
-                        centerY - dotSize / 2F - SFloat(3F),
-                        dotSize + SFloat(6F),
-                        dotSize + SFloat(6F));
                     graphics.FillEllipse(indicatorBrush, startX, centerY - dotSize / 2F, dotSize, dotSize);
-                    graphics.FillEllipse(
-                        highlightBrush,
-                        startX + SFloat(1F),
-                        centerY - dotSize / 2F + SFloat(1F),
-                        SFloat(2F),
-                        SFloat(2F));
                 }
 
                 RectangleF textBounds = new RectangleF(
@@ -453,16 +496,16 @@ namespace CodexQuotaOverlay
             }
 
             Color feedbackColor = !connected
-                ? Color.FromArgb(143, 148, 140)
+                ? TaskLightVisualStyle.Offline
                 : (snapshot.AttentionCount > 0
-                    ? Color.FromArgb(228, 103, 96)
+                    ? TaskLightVisualStyle.Attention
                     : (snapshot.RunningCount > 0
-                        ? Color.FromArgb(229, 154, 49)
-                        : Color.FromArgb(73, 143, 99)));
+                        ? TaskLightVisualStyle.Running
+                        : TaskLightVisualStyle.Success));
             int alpha = (int)Math.Round(120F * feedbackMotion.Current);
             RectangleF feedbackBounds = cardBounds;
             feedbackBounds.Inflate(SFloat(1.5F), SFloat(1.5F));
-            using (GraphicsPath feedbackPath = UiDrawing.CreateRoundedPath(feedbackBounds, SFloat(15F)))
+            using (GraphicsPath feedbackPath = UiDrawing.CreateRoundedPath(feedbackBounds, SFloat(12F)))
             using (Pen feedbackPen = new Pen(Color.FromArgb(alpha, feedbackColor), Math.Max(1F, SFloat(1.25F))))
             {
                 graphics.DrawPath(feedbackPen, feedbackPath);
@@ -486,6 +529,15 @@ namespace CodexQuotaOverlay
             settings.AlwaysOnTop = detailsPopup.AlwaysOnTop;
             settings.Save();
             ApplyWindowPosition();
+        }
+
+        private void ForwardTaskActivated(object sender, TaskActivatedEventArgs args)
+        {
+            EventHandler<TaskActivatedEventArgs> handler = TaskActivated;
+            if (handler != null && args != null && args.Task != null)
+            {
+                handler(this, new TaskActivatedEventArgs(args.Task));
+            }
         }
 
         private void OnMotionTick(object sender, EventArgs args)

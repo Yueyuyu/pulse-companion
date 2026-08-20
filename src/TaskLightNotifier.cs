@@ -7,26 +7,44 @@ namespace CodexQuotaOverlay
 {
     internal sealed class TaskLightNotifier : IDisposable
     {
-        private readonly NotifyIcon notifyIcon;
-        private readonly Timer hideTimer;
+        private readonly NotifyIcon fallbackNotifyIcon;
+        private readonly Timer fallbackHideTimer;
+        private readonly TaskToastForm toast;
         private readonly HashSet<string> previousAttentionIds =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, TaskSnapshot> previousRunningTasks =
+            new Dictionary<string, TaskSnapshot>(StringComparer.OrdinalIgnoreCase);
         private bool hasBaseline;
-        private int previousRunningCount;
+        private TaskSnapshot fallbackTask;
+
+        public event EventHandler<TaskActivatedEventArgs> TaskActivated;
 
         public TaskLightNotifier()
         {
-            notifyIcon = new NotifyIcon();
-            notifyIcon.Icon = SystemIcons.Application;
-            notifyIcon.Text = "Codex 任务灯";
-            notifyIcon.Visible = false;
+            toast = new TaskToastForm();
+            toast.TaskActivated += ForwardTaskActivated;
 
-            hideTimer = new Timer();
-            hideTimer.Interval = 9000;
-            hideTimer.Tick += delegate
+            // 只在自绘通知无法显示时启用系统托盘气泡，避免正常情况下出现双重提醒。
+            fallbackNotifyIcon = new NotifyIcon();
+            fallbackNotifyIcon.Icon = SystemIcons.Application;
+            fallbackNotifyIcon.Text = "Codex 任务灯";
+            fallbackNotifyIcon.Visible = false;
+            fallbackNotifyIcon.BalloonTipClicked += delegate
             {
-                hideTimer.Stop();
-                notifyIcon.Visible = false;
+                TaskSnapshot task = fallbackTask;
+                if (task != null)
+                {
+                    RaiseTaskActivated(task);
+                }
+            };
+
+            fallbackHideTimer = new Timer();
+            fallbackHideTimer.Interval = 9000;
+            fallbackHideTimer.Tick += delegate
+            {
+                fallbackHideTimer.Stop();
+                fallbackNotifyIcon.Visible = false;
+                fallbackTask = null;
             };
         }
 
@@ -38,18 +56,30 @@ namespace CodexQuotaOverlay
             }
 
             HashSet<string> currentAttentionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, TaskSnapshot> currentRunningTasks =
+                new Dictionary<string, TaskSnapshot>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, TaskSnapshot> currentTasks =
+                new Dictionary<string, TaskSnapshot>(StringComparer.OrdinalIgnoreCase);
             TaskSnapshot newestAttention = null;
+
             foreach (TaskSnapshot task in snapshot.Tasks)
             {
-                if (task.State != CodexTaskState.NeedsAttention)
+                if (!string.IsNullOrWhiteSpace(task.Id))
                 {
-                    continue;
+                    currentTasks[task.Id] = task;
                 }
 
-                currentAttentionIds.Add(task.Id);
-                if (!previousAttentionIds.Contains(task.Id) && newestAttention == null)
+                if (task.State == CodexTaskState.NeedsAttention)
                 {
-                    newestAttention = task;
+                    currentAttentionIds.Add(task.Id);
+                    if (!previousAttentionIds.Contains(task.Id) && newestAttention == null)
+                    {
+                        newestAttention = task;
+                    }
+                }
+                else if (task.State == CodexTaskState.Running && !string.IsNullOrWhiteSpace(task.Id))
+                {
+                    currentRunningTasks[task.Id] = task;
                 }
             }
 
@@ -58,17 +88,44 @@ namespace CodexQuotaOverlay
                 if (newestAttention != null)
                 {
                     Show(
+                        TaskToastKind.NeedsAttention,
+                        newestAttention,
                         "Codex 需要你处理",
-                        string.IsNullOrWhiteSpace(newestAttention.Title)
-                            ? "有一个任务失败或正在等待你的操作。"
-                            : newestAttention.Title,
-                        ToolTipIcon.Warning);
+                        DisplayTitle(newestAttention),
+                        "点击打开对应任务");
                 }
-                else if (previousRunningCount > 0 &&
-                         snapshot.RunningCount == 0 &&
-                         snapshot.AttentionCount == 0)
+                else
                 {
-                    Show("Codex 任务已完成", "所有正在执行的任务都已完成。", ToolTipIcon.Info);
+                    List<TaskSnapshot> completed = FindCompletedTasks(currentTasks);
+                    if (completed.Count == 0 &&
+                        previousRunningTasks.Count > 0 &&
+                        snapshot.RunningCount == 0 &&
+                        snapshot.AttentionCount == 0)
+                    {
+                        foreach (TaskSnapshot previousTask in previousRunningTasks.Values)
+                        {
+                            completed.Add(previousTask);
+                        }
+
+                        completed.Sort(delegate(TaskSnapshot left, TaskSnapshot right)
+                        {
+                            return right.ActivityAtUtc.CompareTo(left.ActivityAtUtc);
+                        });
+                    }
+
+                    if (completed.Count > 0)
+                    {
+                        TaskSnapshot newestCompleted = completed[0];
+                        string detail = completed.Count == 1
+                            ? "点击打开对应任务"
+                            : "另有 " + (completed.Count - 1).ToString() + " 个任务也已完成 · 点击查看";
+                        Show(
+                            TaskToastKind.Completed,
+                            newestCompleted,
+                            "Codex 任务已完成",
+                            DisplayTitle(newestCompleted),
+                            detail);
+                    }
                 }
             }
 
@@ -78,36 +135,111 @@ namespace CodexQuotaOverlay
                 previousAttentionIds.Add(id);
             }
 
-            previousRunningCount = snapshot.RunningCount;
+            previousRunningTasks.Clear();
+            foreach (KeyValuePair<string, TaskSnapshot> pair in currentRunningTasks)
+            {
+                previousRunningTasks[pair.Key] = pair.Value;
+            }
+
             hasBaseline = true;
+        }
+
+        public void ShowNavigationError(TaskSnapshot task, string status)
+        {
+            Show(
+                TaskToastKind.NavigationError,
+                task,
+                "无法打开 Codex 任务",
+                DisplayTitle(task),
+                string.IsNullOrWhiteSpace(status) ? "请确认 Codex Desktop 已正确安装" : status);
         }
 
         public void Reset()
         {
             hasBaseline = false;
-            previousRunningCount = 0;
             previousAttentionIds.Clear();
-            hideTimer.Stop();
-            notifyIcon.Visible = false;
+            previousRunningTasks.Clear();
+            toast.CloseToast(false);
+            fallbackHideTimer.Stop();
+            fallbackNotifyIcon.Visible = false;
+            fallbackTask = null;
         }
 
         public void Dispose()
         {
-            hideTimer.Stop();
-            hideTimer.Dispose();
-            notifyIcon.Visible = false;
-            notifyIcon.Dispose();
+            toast.TaskActivated -= ForwardTaskActivated;
+            toast.CloseToast(false);
+            toast.Dispose();
+            fallbackHideTimer.Stop();
+            fallbackHideTimer.Dispose();
+            fallbackNotifyIcon.Visible = false;
+            fallbackNotifyIcon.Dispose();
         }
 
-        private void Show(string title, string text, ToolTipIcon icon)
+        private List<TaskSnapshot> FindCompletedTasks(Dictionary<string, TaskSnapshot> currentTasks)
         {
-            hideTimer.Stop();
-            notifyIcon.BalloonTipTitle = title;
-            notifyIcon.BalloonTipText = text;
-            notifyIcon.BalloonTipIcon = icon;
-            notifyIcon.Visible = true;
-            notifyIcon.ShowBalloonTip(6500);
-            hideTimer.Start();
+            List<TaskSnapshot> completed = new List<TaskSnapshot>();
+            foreach (KeyValuePair<string, TaskSnapshot> previous in previousRunningTasks)
+            {
+                TaskSnapshot current;
+                if (currentTasks.TryGetValue(previous.Key, out current) && current.State == CodexTaskState.Completed)
+                {
+                    completed.Add(current);
+                }
+            }
+
+            completed.Sort(delegate(TaskSnapshot left, TaskSnapshot right)
+            {
+                return right.ActivityAtUtc.CompareTo(left.ActivityAtUtc);
+            });
+            return completed;
+        }
+
+        private void Show(TaskToastKind kind, TaskSnapshot task, string title, string body, string detail)
+        {
+            fallbackHideTimer.Stop();
+            fallbackNotifyIcon.Visible = false;
+            fallbackTask = null;
+            if (toast.ShowNotification(kind, task, title, body, detail))
+            {
+                return;
+            }
+
+            fallbackTask = task;
+            fallbackNotifyIcon.BalloonTipTitle = title;
+            fallbackNotifyIcon.BalloonTipText = body + (string.IsNullOrWhiteSpace(detail) ? string.Empty : Environment.NewLine + detail);
+            fallbackNotifyIcon.BalloonTipIcon = kind == TaskToastKind.NeedsAttention || kind == TaskToastKind.NavigationError
+                ? ToolTipIcon.Warning
+                : ToolTipIcon.Info;
+            fallbackNotifyIcon.Visible = true;
+            fallbackNotifyIcon.ShowBalloonTip(6500);
+            fallbackHideTimer.Start();
+        }
+
+        private void ForwardTaskActivated(object sender, TaskActivatedEventArgs args)
+        {
+            RaiseTaskActivated(args == null ? null : args.Task);
+        }
+
+        private void RaiseTaskActivated(TaskSnapshot task)
+        {
+            if (task == null)
+            {
+                return;
+            }
+
+            EventHandler<TaskActivatedEventArgs> handler = TaskActivated;
+            if (handler != null)
+            {
+                handler(this, new TaskActivatedEventArgs(task));
+            }
+        }
+
+        private static string DisplayTitle(TaskSnapshot task)
+        {
+            return task == null || string.IsNullOrWhiteSpace(task.Title)
+                ? "未命名 Codex 任务"
+                : task.Title;
         }
     }
 }

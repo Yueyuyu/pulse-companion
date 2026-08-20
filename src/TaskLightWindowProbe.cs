@@ -15,6 +15,9 @@ namespace CodexQuotaOverlay
         public Rectangle DetailsBounds { get; set; }
         public bool LightTopMost { get; set; }
         public bool DetailsTopMost { get; set; }
+        public IntPtr ToastHandle { get; set; }
+        public Rectangle ToastBounds { get; set; }
+        public bool ToastTopMost { get; set; }
     }
 
     internal static class TaskLightWindowProbe
@@ -43,6 +46,12 @@ namespace CodexQuotaOverlay
                     snapshot.DetailsHandle = handle;
                     snapshot.DetailsBounds = GetBounds(handle);
                     snapshot.DetailsTopMost = IsTopMost(handle);
+                }
+                else if (string.Equals(title, "Codex 任务通知", StringComparison.Ordinal))
+                {
+                    snapshot.ToastHandle = handle;
+                    snapshot.ToastBounds = GetBounds(handle);
+                    snapshot.ToastTopMost = IsTopMost(handle);
                 }
 
                 return true;

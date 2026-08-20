@@ -78,6 +78,16 @@ namespace CodexQuotaOverlay
         }
     }
 
+    internal sealed class TaskActivatedEventArgs : EventArgs
+    {
+        public TaskSnapshot Task { get; private set; }
+
+        public TaskActivatedEventArgs(TaskSnapshot task)
+        {
+            Task = task;
+        }
+    }
+
     internal sealed class TaskConnectionEventArgs : EventArgs
     {
         public bool Connected { get; private set; }

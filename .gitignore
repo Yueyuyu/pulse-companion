@@ -1,0 +1,15 @@
+bin/
+obj/
+artifacts/
+output/
+.playwright-cli/
+.vs/
+.idea/
+.vscode/
+TestResults/
+*.user
+*.suo
+*.log
+*.tmp
+*.lnk
+install.local.json

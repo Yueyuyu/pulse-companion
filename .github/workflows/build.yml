@@ -1,0 +1,28 @@
+name: Windows build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        shell: powershell
+        run: .\build.ps1
+
+      - name: Offline parser tests
+        shell: powershell
+        run: .\verify.ps1 -Development -Offline
+
+      - name: Upload unsigned binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-desktop-companion-windows-x64-unsigned
+          path: bin/*.exe
+          if-no-files-found: error

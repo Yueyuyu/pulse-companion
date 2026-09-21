@@ -1,8 +1,43 @@
 # 变更记录
 
-本文件记录 Codex Desktop Companion 的公开版本变化。版本遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)，内容格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+本文件记录 Pulse Companion（原 Codex Desktop Companion）的开发与公开版本变化。版本遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)，内容格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
 ## [Unreleased]
+
+当前开发版本：`1.2.0`。以下变化尚未创建发布 Tag 或 Release；GitHub 仓库与本地源码目录已统一改名为 `pulse-companion`，版本仍处于开发阶段。
+
+### Pulse Companion 后台版
+
+- 产品对外名称改为 **Pulse Companion**，同步 README、安装/换机/架构/排障说明、程序集产品信息、窗口与托盘文案；仓库及本地目录改名为 `pulse-companion`，EXE、启动项文件名、Mutex 与设置路径保留兼容。
+- 默认安装切换为 Pulse WebView2 后台浮条，沿用上游图标、造型、配色与动作；旧 Quiet Workspace 胶囊/任务灯保留为回退入口。
+- 接入真实周额度、任务、最多 5 个关注任务的持久化、完成/待处理通知与 UUID 任务跳转；Lab 页面继续固定示例。
+- Windows 登录后台驻留，Codex 运行时显示、退出时隐藏并停止只读客户端，无独立任务栏按钮。
+- 每个已接入应用独立状态与品牌/机器人偏好；当前真实接入只有 Codex，Cursor 仅为 Lab 示例。
+- 支持紧凑、展开和贴边，未固定时离开自动收起、重入取消；透明宿主补充本窗口范围的指针检测，不安装全局输入钩子。
+- 修复透明窗口边缘锯齿：关闭 WebView 布局取整，避免系统 Region 裁掉抗锯齿像素。
+- 修复移入移出闪动：紧凑/展开使用固定透明画布与稳定侧轨坐标，透明预留区不吞桌面点击；增加 24 组宿主状态检查及 Lab 悬停回归。
+- 安装备份旧启动项，部署后不依赖 Vite/源码目录；保留 `rollback-pulse.ps1`，不清空原关注与窗口设置。
+- 明确构建需配套 Lab、Node.js、WebView2 和合法本机机器人资源。当前含机器人部署产物仅限本机，不能公开上传或作为 Release 分发；当前 CI 仍仅覆盖共享业务/旧 WinForms 版。
+- 仓库迁移为 `Yueyuyu/pulse-companion`，构建默认按同级目录发现 Lab；预览与自测改用固定示例 UUID，公开源码不保留本机对话标识，增加本机资源/个人设置的 Git 忽略规则。
+
+以下为同一开发版本保留的 Quiet Workspace / 共享业务变化：
+
+### 新增
+
+- 可在任务详情中为任意最近任务点亮星标，并在桌面右上角常驻显示最多 5 个“重点关注”任务。
+- 重点关注卡片同时显示待处理、进行中、已完成和暂不可用状态；点击任务可直接打开对应 Codex 对话，点击星标可取消关注。
+- 新增 `--watch-self-test` 关注生命周期自测与 `--watch-ui-preview` 独立视觉预览入口。
+
+### 优化
+
+- 重点关注顺序只由用户选择顺序决定，任务状态变化不会引起列表自动重排。
+- Codex 暂时离线、任务超出最近列表或读取失败时保留关注记录，以灰色“暂不可用”呈现，不自动删除。
+- 重点关注使用 Quiet Workspace 白色紧凑卡片、自绘星标和低饱和状态标签；列表不加入装饰性循环动效。
+
+### 兼容
+
+- 仅在原有 `task-light.json` 中保存任务 UUID、标题和最后状态；不修改 Codex 安装目录、不写入 Codex 会话，也不发送模型请求。
+- 开发预览改用临时设置对象，不会读取或覆盖用户真实的任务灯位置、置顶和重点关注配置。
 
 ## [1.1.0] - 2026-08-20
 
@@ -36,6 +71,6 @@
 - 提供一次安装、开机自启、幂等修复、卸载和严格实时验证脚本。
 - 保持与 Codex 的外置只读边界，不修改 Codex、不创建任务、不发送模型请求。
 
-[Unreleased]: https://github.com/Yueyuyu/codex-desktop-companion/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/Yueyuyu/codex-desktop-companion/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/Yueyuyu/codex-desktop-companion/releases/tag/v1.0.0
+[Unreleased]: https://github.com/Yueyuyu/pulse-companion/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Yueyuyu/pulse-companion/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/Yueyuyu/pulse-companion/releases/tag/v1.0.0

@@ -14,7 +14,7 @@ namespace CodexQuotaOverlay
         private const int DesignHeaderHeight = 72;
         private const int DesignFooterHeight = 50;
         private const int DesignGroupHeight = 32;
-        private const int DesignRowHeight = 49;
+        private const int DesignRowHeight = 52;
         private const int DesignEmptyHeight = 128;
         private const int DesignGap = 8;
         private const int DesignPaddingLeft = 16;
@@ -25,6 +25,7 @@ namespace CodexQuotaOverlay
         private const int HitNone = -1;
         private const int HitClose = -2;
         private const int HitToggle = -3;
+        private const int HitWatchBase = 1000;
         private const int VkLeftButton = 0x01;
         private const int VkRightButton = 0x02;
         private const int VkEscape = 0x1B;
@@ -33,6 +34,7 @@ namespace CodexQuotaOverlay
         {
             public TaskSnapshot Task;
             public Rectangle Bounds;
+            public Rectangle WatchBounds;
         }
 
         private sealed class GroupLayout
@@ -49,6 +51,7 @@ namespace CodexQuotaOverlay
         private readonly UiMotionValue toggleMotion = new UiMotionValue(1F);
         private readonly List<GroupLayout> groups = new List<GroupLayout>();
         private readonly List<RowLayout> rows = new List<RowLayout>();
+        private readonly HashSet<string> watchedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private TaskListSnapshot snapshot = new TaskListSnapshot(null);
         private Rectangle anchorBounds;
         private Rectangle closeBounds;
@@ -68,9 +71,13 @@ namespace CodexQuotaOverlay
         private bool rightButtonWasDown;
         private long lastClockSecond;
         private int hiddenTaskCount;
+        private string watchFeedbackText = string.Empty;
+        private bool watchFeedbackError;
+        private DateTimeOffset watchFeedbackUntilUtc = DateTimeOffset.MinValue;
 
         public event EventHandler AlwaysOnTopChanged;
         public event EventHandler<TaskActivatedEventArgs> TaskActivated;
+        public event EventHandler<TaskActivatedEventArgs> TaskWatchToggled;
 
         public bool AlwaysOnTop
         {
@@ -97,7 +104,7 @@ namespace CodexQuotaOverlay
             StartPosition = FormStartPosition.Manual;
             Text = "Codex 任务详情";
             AccessibleName = "Codex 任务详情";
-            AccessibleDescription = "显示当前需要处理和执行中的 Codex 任务。";
+            AccessibleDescription = "显示最近的 Codex 任务。点击任务可打开，点击星标可加入或移出重点关注。";
 
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer |
@@ -113,6 +120,45 @@ namespace CodexQuotaOverlay
             motionTimer.Tick += OnMotionTick;
 
             BuildLayout();
+        }
+
+        public static bool RunWatchHitSelfTest(out string result)
+        {
+            TaskSnapshot completed = new TaskSnapshot(
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                "已完成任务",
+                string.Empty,
+                string.Empty,
+                CodexTaskState.Completed,
+                "已完成",
+                DateTimeOffset.UtcNow);
+            try
+            {
+                using (TaskLightDetailsForm form = new TaskLightDetailsForm())
+                {
+                    form.UpdateTasks(new TaskListSnapshot(new[] { completed }));
+                    if (form.rows.Count != 1)
+                    {
+                        result = "{\"ok\":false,\"test\":\"watched-task-hit-targets\"}";
+                        return false;
+                    }
+
+                    Rectangle watch = form.rows[0].WatchBounds;
+                    Rectangle row = form.rows[0].Bounds;
+                    int watchHit = form.GetHitAt(new Point(watch.Left + watch.Width / 2, watch.Top + watch.Height / 2));
+                    int rowHit = form.GetHitAt(new Point(row.Left + form.S(24), row.Top + row.Height / 2));
+                    bool success = watchHit == HitWatchBase && rowHit == 0;
+                    result = success
+                        ? "{\"ok\":true,\"test\":\"watched-task-hit-targets\"}"
+                        : "{\"ok\":false,\"test\":\"watched-task-hit-targets\"}";
+                    return success;
+                }
+            }
+            catch (Exception)
+            {
+                result = "{\"ok\":false,\"test\":\"watched-task-hit-targets\"}";
+                return false;
+            }
         }
 
         protected override bool ShowWithoutActivation
@@ -156,6 +202,39 @@ namespace CodexQuotaOverlay
             if (Visible)
             {
                 Reposition(anchorBounds);
+                RenderLayeredWindow();
+            }
+        }
+
+        public void UpdateWatchedTasks(IEnumerable<WatchedTaskRecord> watchedTasks)
+        {
+            watchedIds.Clear();
+            if (watchedTasks != null)
+            {
+                foreach (WatchedTaskRecord record in watchedTasks)
+                {
+                    if (record != null && !string.IsNullOrWhiteSpace(record.Id))
+                    {
+                        watchedIds.Add(record.Id);
+                    }
+                }
+            }
+
+            if (Visible)
+            {
+                RenderLayeredWindow();
+            }
+        }
+
+        public void ShowWatchFeedback(string text, bool isError)
+        {
+            watchFeedbackText = text ?? string.Empty;
+            watchFeedbackError = isError;
+            watchFeedbackUntilUtc = string.IsNullOrWhiteSpace(watchFeedbackText)
+                ? DateTimeOffset.MinValue
+                : DateTimeOffset.UtcNow.AddSeconds(1.8D);
+            if (Visible)
+            {
                 RenderLayeredWindow();
             }
         }
@@ -334,6 +413,18 @@ namespace CodexQuotaOverlay
                     handler(this, EventArgs.Empty);
                 }
             }
+            else if (IsWatchHit(action))
+            {
+                int rowIndex = action - HitWatchBase;
+                if (rowIndex >= 0 && rowIndex < rows.Count)
+                {
+                    EventHandler<TaskActivatedEventArgs> handler = TaskWatchToggled;
+                    if (handler != null)
+                    {
+                        handler(this, new TaskActivatedEventArgs(rows[rowIndex].Task));
+                    }
+                }
+            }
             else if (action >= 0 && action < rows.Count)
             {
                 TaskSnapshot selectedTask = rows[action].Task;
@@ -442,7 +533,7 @@ namespace CodexQuotaOverlay
             using (Font titleFont = TaskLightVisualStyle.CreateSemiboldFont(SFloat(12F)))
             using (SolidBrush titleBrush = new SolidBrush(TaskLightVisualStyle.TextPrimary))
             {
-                graphics.DrawString("Codex 活动任务", titleFont, titleBrush, new PointF(SFloat(16F), SFloat(12F)));
+                graphics.DrawString("Codex 任务", titleFont, titleBrush, new PointF(SFloat(16F), SFloat(12F)));
             }
 
             DrawHeaderChips(graphics);
@@ -486,7 +577,7 @@ namespace CodexQuotaOverlay
 
             if (snapshot.AttentionCount == 0 && snapshot.RunningCount == 0)
             {
-                DrawHeaderChip(graphics, ref x, y, "当前空闲", TaskLightVisualStyle.SuccessSoft, TaskLightVisualStyle.SuccessText, true);
+                DrawHeaderChip(graphics, ref x, y, "当前空闲", TaskLightVisualStyle.SuccessSoft, TaskLightVisualStyle.SuccessText, false);
                 return;
             }
 
@@ -607,9 +698,11 @@ namespace CodexQuotaOverlay
 
         private void DrawTaskRow(Graphics graphics, int index, RowLayout row)
         {
-            bool hovered = hoveredHit == index;
-            bool pressed = pressedHit == index;
-            bool needsAttention = row.Task.State == CodexTaskState.NeedsAttention;
+            int watchHit = HitWatchBase + index;
+            bool watchHovered = hoveredHit == watchHit;
+            bool watchPressed = pressedHit == watchHit;
+            bool hovered = hoveredHit == index || watchHovered;
+            bool pressed = pressedHit == index || watchPressed;
             if (hovered || pressed)
             {
                 Color background = pressed
@@ -628,27 +721,26 @@ namespace CodexQuotaOverlay
                 SFloat(5F),
                 SFloat(24F));
             using (GraphicsPath rail = TaskLightVisualStyle.CreatePill(railBounds))
-            using (SolidBrush railBrush = new SolidBrush(needsAttention
-                ? TaskLightVisualStyle.Attention
-                : TaskLightVisualStyle.Running))
+            using (SolidBrush railBrush = new SolidBrush(TaskLightVisualStyle.StateColor(row.Task.State)))
             {
                 graphics.FillPath(railBrush, rail);
             }
 
             int textLeft = row.Bounds.Left + S(26);
             int timeWidth = S(52);
+            int watchSpace = S(36);
             Rectangle titleBounds = new Rectangle(
                 textLeft,
                 row.Bounds.Top + S(6),
-                row.Bounds.Right - textLeft - timeWidth - S(8),
+                row.Bounds.Right - textLeft - timeWidth - watchSpace - S(4),
                 S(19));
             Rectangle detailBounds = new Rectangle(
                 textLeft,
                 row.Bounds.Top + S(27),
-                row.Bounds.Right - textLeft - timeWidth - S(8),
+                row.Bounds.Right - textLeft - timeWidth - watchSpace - S(4),
                 S(17));
             Rectangle timeBounds = new Rectangle(
-                row.Bounds.Right - timeWidth - S(8),
+                row.WatchBounds.Left - timeWidth - S(2),
                 row.Bounds.Top,
                 timeWidth,
                 row.Bounds.Height);
@@ -668,6 +760,14 @@ namespace CodexQuotaOverlay
                 graphics.DrawString(row.Task.Detail, detailFont, secondaryBrush, detailBounds, detailFormat);
                 graphics.DrawString(BuildTimeText(row.Task), timeFont, secondaryBrush, timeBounds, timeFormat);
             }
+
+            TaskLightVisualStyle.DrawWatchStar(
+                graphics,
+                row.WatchBounds,
+                watchedIds.Contains(row.Task.Id),
+                watchHovered,
+                watchPressed,
+                scale);
         }
 
         private void DrawEmptyState(Graphics graphics)
@@ -705,21 +805,28 @@ namespace CodexQuotaOverlay
                 graphics.DrawLine(separator, 0, footerBounds.Top, cardSize.Width, footerBounds.Top);
             }
 
-            string footerText = hiddenTaskCount > 0
-                ? "另有 " + hiddenTaskCount.ToString(CultureInfo.InvariantCulture) + " 个未显示"
-                : "仅在完成或需处理时通知";
+            bool hasWatchFeedback = !string.IsNullOrWhiteSpace(watchFeedbackText) &&
+                                    DateTimeOffset.UtcNow < watchFeedbackUntilUtc;
+            string footerText = hasWatchFeedback
+                ? watchFeedbackText
+                : (hiddenTaskCount > 0
+                    ? "另有 " + hiddenTaskCount.ToString(CultureInfo.InvariantCulture) + " 个未显示 · 最多关注 5 个"
+                    : "点亮星标，最多关注 5 个任务");
+            Color footerColor = hasWatchFeedback
+                ? (watchFeedbackError ? TaskLightVisualStyle.AttentionText : TaskLightVisualStyle.SuccessText)
+                : TaskLightVisualStyle.TextQuiet;
             using (Font iconFont = TaskLightVisualStyle.CreateIconFont(SFloat(13F)))
             using (Font font = TaskLightVisualStyle.CreateRegularFont(SFloat(11F)))
-            using (SolidBrush brush = new SolidBrush(TaskLightVisualStyle.TextQuiet))
+            using (SolidBrush brush = new SolidBrush(footerColor))
             using (StringFormat leftFormat = new StringFormat())
             using (StringFormat centerFormat = CenterFormat())
             {
                 leftFormat.Alignment = StringAlignment.Near;
                 leftFormat.LineAlignment = StringAlignment.Center;
-                Rectangle bell = new Rectangle(footerBounds.Left + S(14), footerBounds.Top, S(18), footerBounds.Height);
-                Rectangle left = new Rectangle(footerBounds.Left + S(36), footerBounds.Top, S(210), footerBounds.Height);
+                Rectangle star = new Rectangle(footerBounds.Left + S(12), footerBounds.Top + (footerBounds.Height - S(24)) / 2, S(24), S(24));
+                Rectangle left = new Rectangle(footerBounds.Left + S(39), footerBounds.Top, S(224), footerBounds.Height);
                 Rectangle pin = new Rectangle(toggleBounds.Left - S(26), footerBounds.Top, S(20), footerBounds.Height);
-                graphics.DrawString(TaskLightVisualStyle.BellIcon, iconFont, brush, bell, centerFormat);
+                TaskLightVisualStyle.DrawWatchStar(graphics, star, true, false, false, scale);
                 graphics.DrawString(footerText, font, brush, left, leftFormat);
                 graphics.DrawString(TaskLightVisualStyle.PinIcon, iconFont, brush, pin, centerFormat);
             }
@@ -777,9 +884,17 @@ namespace CodexQuotaOverlay
                 contentLeft,
                 contentWidth,
                 visibleRows);
+            int completedCount = Math.Max(0, snapshot.Tasks.Count - snapshot.AttentionCount - snapshot.RunningCount);
+            visibleRows = AddGroup(
+                CodexTaskState.Completed,
+                "最近完成",
+                completedCount,
+                ref y,
+                contentLeft,
+                contentWidth,
+                visibleRows);
 
-            int activeCount = snapshot.AttentionCount + snapshot.RunningCount;
-            hiddenTaskCount = Math.Max(0, activeCount - visibleRows);
+            hiddenTaskCount = Math.Max(0, snapshot.Tasks.Count - visibleRows);
             if (rows.Count == 0)
             {
                 emptyBounds = new Rectangle(0, S(DesignHeaderHeight), S(DesignWidth), S(DesignEmptyHeight));
@@ -833,10 +948,16 @@ namespace CodexQuotaOverlay
                     continue;
                 }
 
+                Rectangle rowBounds = new Rectangle(contentLeft, y, contentWidth, S(DesignRowHeight));
                 rows.Add(new RowLayout
                 {
                     Task = task,
-                    Bounds = new Rectangle(contentLeft, y, contentWidth, S(DesignRowHeight))
+                    Bounds = rowBounds,
+                    WatchBounds = new Rectangle(
+                        rowBounds.Right - S(38),
+                        rowBounds.Top + (rowBounds.Height - S(32)) / 2,
+                        S(32),
+                        S(32))
                 });
                 y += S(DesignRowHeight);
                 visibleRows++;
@@ -859,6 +980,11 @@ namespace CodexQuotaOverlay
 
             for (int index = 0; index < rows.Count; index++)
             {
+                if (rows[index].WatchBounds.Contains(location))
+                {
+                    return HitWatchBase + index;
+                }
+
                 if (rows[index].Bounds.Contains(location))
                 {
                     return index;
@@ -875,9 +1001,17 @@ namespace CodexQuotaOverlay
 
         private void UpdateScale(Rectangle newAnchorBounds)
         {
-            float newScale = newAnchorBounds.Height > 0
-                ? Math.Max(1F, Math.Min(3F, newAnchorBounds.Height / 40F))
-                : 1F;
+            float newScale;
+            try
+            {
+                uint dpi = NativeMethods.GetDpiForWindow(Handle);
+                newScale = Math.Max(1F, Math.Min(3F, dpi / 96F));
+            }
+            catch (Exception)
+            {
+                // 关注卡片高度会随条目数量变化，不能再用锚点高度推断 DPI。
+                newScale = 1F;
+            }
             if (Math.Abs(newScale - scale) < 0.01F)
             {
                 return;
@@ -949,6 +1083,13 @@ namespace CodexQuotaOverlay
                 RenderLayeredWindow();
             }
 
+            if (!string.IsNullOrWhiteSpace(watchFeedbackText) && DateTimeOffset.UtcNow >= watchFeedbackUntilUtc)
+            {
+                watchFeedbackText = string.Empty;
+                watchFeedbackUntilUtc = DateTimeOffset.MinValue;
+                RenderLayeredWindow();
+            }
+
             escapeWasDown = escapeIsDown;
             leftButtonWasDown = leftButtonIsDown;
             rightButtonWasDown = rightButtonIsDown;
@@ -984,6 +1125,11 @@ namespace CodexQuotaOverlay
         private static bool IsKeyDown(int virtualKey)
         {
             return (NativeMethods.GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+        }
+
+        private static bool IsWatchHit(int hit)
+        {
+            return hit >= HitWatchBase;
         }
 
         private static string BuildTimeText(TaskSnapshot task)

@@ -16,11 +16,18 @@ namespace CodexQuotaOverlay
             new Dictionary<string, TaskSnapshot>(StringComparer.OrdinalIgnoreCase);
         private bool hasBaseline;
         private TaskSnapshot fallbackTask;
+        private readonly Action<TaskToastKind, TaskSnapshot> testSink;
 
         public event EventHandler<TaskActivatedEventArgs> TaskActivated;
 
         public TaskLightNotifier()
+            : this(null)
         {
+        }
+
+        internal TaskLightNotifier(Action<TaskToastKind, TaskSnapshot> isolatedTestSink)
+        {
+            testSink = isolatedTestSink;
             toast = new TaskToastForm();
             toast.TaskActivated += ForwardTaskActivated;
 
@@ -97,21 +104,7 @@ namespace CodexQuotaOverlay
                 else
                 {
                     List<TaskSnapshot> completed = FindCompletedTasks(currentTasks);
-                    if (completed.Count == 0 &&
-                        previousRunningTasks.Count > 0 &&
-                        snapshot.RunningCount == 0 &&
-                        snapshot.AttentionCount == 0)
-                    {
-                        foreach (TaskSnapshot previousTask in previousRunningTasks.Values)
-                        {
-                            completed.Add(previousTask);
-                        }
-
-                        completed.Sort(delegate(TaskSnapshot left, TaskSnapshot right)
-                        {
-                            return right.ActivityAtUtc.CompareTo(left.ActivityAtUtc);
-                        });
-                    }
+                    // 快照截断、任务暂时消失或断线都不是完成证据，必须命中同一 ID 的完成状态。
 
                     if (completed.Count > 0)
                     {
@@ -182,7 +175,8 @@ namespace CodexQuotaOverlay
             foreach (KeyValuePair<string, TaskSnapshot> previous in previousRunningTasks)
             {
                 TaskSnapshot current;
-                if (currentTasks.TryGetValue(previous.Key, out current) && current.State == CodexTaskState.Completed)
+                if (currentTasks.TryGetValue(previous.Key, out current) && current.StateKnown &&
+                    current.State == CodexTaskState.Completed && current.ActivityAtUtc >= previous.Value.ActivityAtUtc)
                 {
                     completed.Add(current);
                 }
@@ -197,6 +191,7 @@ namespace CodexQuotaOverlay
 
         private void Show(TaskToastKind kind, TaskSnapshot task, string title, string body, string detail)
         {
+            if (testSink != null) { testSink(kind, task); return; }
             fallbackHideTimer.Stop();
             fallbackNotifyIcon.Visible = false;
             fallbackTask = null;

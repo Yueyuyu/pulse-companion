@@ -19,6 +19,7 @@ namespace CodexQuotaOverlay
         public CodexTaskState State { get; private set; }
         public string Detail { get; private set; }
         public DateTimeOffset ActivityAtUtc { get; private set; }
+        public bool StateKnown { get; private set; }
 
         public TaskSnapshot(
             string id,
@@ -27,7 +28,8 @@ namespace CodexQuotaOverlay
             string logPath,
             CodexTaskState state,
             string detail,
-            DateTimeOffset activityAtUtc)
+            DateTimeOffset activityAtUtc,
+            bool stateKnown = true)
         {
             Id = id ?? string.Empty;
             Title = title ?? string.Empty;
@@ -36,6 +38,7 @@ namespace CodexQuotaOverlay
             State = state;
             Detail = detail ?? string.Empty;
             ActivityAtUtc = activityAtUtc;
+            StateKnown = stateKnown;
         }
     }
 

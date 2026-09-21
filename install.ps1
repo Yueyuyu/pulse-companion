@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipBuild,
+    [switch]$Legacy,
     [switch]$SkipLiveVerification
 )
 
@@ -9,8 +10,14 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $projectRoot 'scripts\common.ps1')
 
+if (-not $Legacy) {
+    & (Join-Path $projectRoot 'install-pulse.ps1') -SkipBuild:$SkipBuild -SkipLiveVerification:$SkipLiveVerification
+    return
+}
+if (Get-PulseInstalledExecutable) { throw '当前已启用 Pulse。恢复旧版请运行 rollback-pulse.ps1，不覆盖现有启动记录。' }
+
 if ($env:OS -ne 'Windows_NT') {
-    throw 'Codex Desktop Companion 目前只支持 Windows。'
+    throw 'Pulse Companion 目前只支持 Windows。'
 }
 
 $sourceOverlay = Join-Path $projectRoot 'bin\CodexQuotaOverlay.exe'
@@ -39,7 +46,7 @@ Copy-Item -LiteralPath $sourceProbe -Destination $installedProbe -Force
 
 $installMetadata = [ordered]@{
     schemaVersion = 1
-    product = 'Codex Desktop Companion'
+    product = 'Pulse Companion'
     sourcePath = $projectRoot
     installedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
 }
@@ -49,7 +56,7 @@ $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $installedOverlay
 $shortcut.WorkingDirectory = $appRoot
-$shortcut.Description = 'Codex 桌面伴侣：周额度与任务状态'
+$shortcut.Description = 'Pulse Companion：Quiet Workspace 旧版周额度与任务状态'
 $shortcut.WindowStyle = 7
 $shortcut.Save()
 

@@ -96,9 +96,69 @@ namespace CodexQuotaOverlay
                 (state == CodexTaskState.Running ? Running : Success);
         }
 
+        public static void DrawWatchStar(
+            Graphics graphics,
+            Rectangle bounds,
+            bool selected,
+            bool hovered,
+            bool pressed,
+            float scale)
+        {
+            if (hovered || pressed)
+            {
+                using (GraphicsPath hoverPath = UiDrawing.CreateRoundedPath(bounds, Math.Max(6F, 8F * scale)))
+                using (SolidBrush hoverBrush = new SolidBrush(pressed ? SurfaceSelected : SurfaceSubtle))
+                {
+                    graphics.FillPath(hoverBrush, hoverPath);
+                }
+            }
+
+            float centerX = bounds.Left + bounds.Width / 2F;
+            float centerY = bounds.Top + bounds.Height / 2F + (pressed ? Math.Max(0.5F, 0.7F * scale) : 0F);
+            float outerRadius = Math.Min(bounds.Width, bounds.Height) * 0.245F;
+            using (GraphicsPath star = CreateStarPath(centerX, centerY, outerRadius, outerRadius * 0.48F))
+            {
+                if (selected)
+                {
+                    using (SolidBrush fill = new SolidBrush(Success))
+                    using (Pen outline = new Pen(SuccessText, Math.Max(1F, 0.9F * scale)))
+                    {
+                        graphics.FillPath(fill, star);
+                        graphics.DrawPath(outline, star);
+                    }
+                }
+                else
+                {
+                    using (Pen outline = new Pen(TextQuiet, Math.Max(1.2F, 1.25F * scale)))
+                    {
+                        outline.LineJoin = LineJoin.Round;
+                        graphics.DrawPath(outline, star);
+                    }
+                }
+            }
+        }
+
         public static GraphicsPath CreatePill(RectangleF bounds)
         {
             return UiDrawing.CreateRoundedPath(bounds, bounds.Height / 2F);
+        }
+
+        private static GraphicsPath CreateStarPath(float centerX, float centerY, float outerRadius, float innerRadius)
+        {
+            PointF[] points = new PointF[10];
+            for (int index = 0; index < points.Length; index++)
+            {
+                double angle = -Math.PI / 2D + index * Math.PI / 5D;
+                float radius = index % 2 == 0 ? outerRadius : innerRadius;
+                points[index] = new PointF(
+                    centerX + (float)Math.Cos(angle) * radius,
+                    centerY + (float)Math.Sin(angle) * radius);
+            }
+
+            GraphicsPath path = new GraphicsPath();
+            path.AddPolygon(points);
+            path.CloseFigure();
+            return path;
         }
     }
 }

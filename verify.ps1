@@ -10,6 +10,11 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $projectRoot 'scripts\common.ps1')
 
+if (-not $Development -and (Get-PulseInstalledExecutable)) {
+    & (Join-Path $projectRoot 'verify-pulse.ps1') -StrictLive:($StrictLive -and -not $Offline)
+    return
+}
+
 function Invoke-CompanionProbe {
     param(
         [Parameter(Mandatory = $true)][string]$ProbePath,
@@ -52,6 +57,7 @@ foreach ($requiredFile in @($overlayPath, $probePath)) {
 [void](Invoke-CompanionProbe -ProbePath $probePath -Name '额度解析自测' -Arguments @('--self-test') -Required)
 [void](Invoke-CompanionProbe -ProbePath $probePath -Name '任务解析自测' -Arguments @('--task-self-test') -Required)
 [void](Invoke-CompanionProbe -ProbePath $probePath -Name 'Codex 任务深链自测' -Arguments @('--thread-uri-self-test') -Required)
+[void](Invoke-CompanionProbe -ProbePath $probePath -Name '重点关注生命周期自测' -Arguments @('--watch-self-test') -Required)
 
 if (-not $Development) {
     $shortcutPath = Get-CompanionStartupShortcut

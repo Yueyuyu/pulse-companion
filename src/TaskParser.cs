@@ -96,6 +96,7 @@ namespace CodexQuotaOverlay
 
             CodexTaskState state;
             string detail;
+            bool stateKnown = true;
             if (waitingOnApproval)
             {
                 state = CodexTaskState.NeedsAttention;
@@ -118,10 +119,17 @@ namespace CodexQuotaOverlay
                 state = CodexTaskState.Running;
                 detail = "Codex 正在处理";
             }
-            else
+            else if (log.State == TaskLogState.Completed && log.ActivityAtUtc != DateTimeOffset.MinValue)
             {
                 state = CodexTaskState.Completed;
                 detail = "已完成";
+            }
+            else
+            {
+                // notLoaded、日志缺失或过期不是完成证据；保留兼容枚举，但明确标记状态未知。
+                state = CodexTaskState.Completed;
+                detail = "暂不可用";
+                stateKnown = false;
             }
 
             DateTimeOffset activityAt = log.ActivityAtUtc != DateTimeOffset.MinValue
@@ -134,7 +142,8 @@ namespace CodexQuotaOverlay
                 logPath,
                 state,
                 detail,
-                activityAt);
+                activityAt,
+                stateKnown);
         }
 
         private static bool IsBackgroundThread(IDictionary<string, object> item)
@@ -290,20 +299,24 @@ namespace CodexQuotaOverlay
                 Directory.CreateDirectory(testRoot);
                 string runningPath = Path.Combine(testRoot, "running.jsonl");
                 string failedPath = Path.Combine(testRoot, "failed.jsonl");
+                // 样例随测试时间生成，仍经过生产时效判断，不放宽真实任务的新鲜度限制。
+                DateTimeOffset fixtureTime = DateTimeOffset.UtcNow.AddSeconds(-5);
+                string timestamp = fixtureTime.ToString("o");
+                string unix = fixtureTime.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture);
                 File.WriteAllText(
                     runningPath,
-                    "{\"timestamp\":\"2026-08-19T08:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"started_at\":1787126400}}\n",
+                    "{\"timestamp\":\"" + timestamp + "\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"started_at\":" + unix + "}}\n",
                     new UTF8Encoding(false));
                 File.WriteAllText(
                     failedPath,
-                    "{\"timestamp\":\"2026-08-19T08:01:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"started_at\":1787126460}}\n" +
-                    "{\"timestamp\":\"2026-08-19T08:02:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"last_agent_message\":null,\"error\":{\"message\":\"fixture\"},\"completed_at\":1787126520}}\n",
+                    "{\"timestamp\":\"" + timestamp + "\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"started_at\":" + unix + "}}\n" +
+                    "{\"timestamp\":\"" + timestamp + "\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"last_agent_message\":null,\"error\":{\"message\":\"fixture\"},\"completed_at\":" + unix + "}}\n",
                     new UTF8Encoding(false));
 
                 JavaScriptSerializer serializer = new JavaScriptSerializer();
                 string fixture = "{\"data\":[" +
-                    "{\"id\":\"running\",\"name\":\"运行任务\",\"preview\":\"\",\"cwd\":\"C:\\\\work\",\"path\":" + serializer.Serialize(runningPath) + ",\"updatedAt\":1787126400,\"ephemeral\":false,\"status\":{\"type\":\"notLoaded\"}}," +
-                    "{\"id\":\"failed\",\"name\":\"失败任务\",\"preview\":\"\",\"cwd\":\"C:\\\\work\",\"path\":" + serializer.Serialize(failedPath) + ",\"updatedAt\":1787126520,\"ephemeral\":false,\"status\":{\"type\":\"notLoaded\"}}]}";
+                    "{\"id\":\"running\",\"name\":\"运行任务\",\"preview\":\"\",\"cwd\":\"C:\\\\work\",\"path\":" + serializer.Serialize(runningPath) + ",\"updatedAt\":" + unix + ",\"ephemeral\":false,\"status\":{\"type\":\"notLoaded\"}}," +
+                    "{\"id\":\"failed\",\"name\":\"失败任务\",\"preview\":\"\",\"cwd\":\"C:\\\\work\",\"path\":" + serializer.Serialize(failedPath) + ",\"updatedAt\":" + unix + ",\"ephemeral\":false,\"status\":{\"type\":\"notLoaded\"}}]}";
                 TaskListSnapshot snapshot = ParseResult(serializer.DeserializeObject(fixture), new TaskLogReader());
                 bool success = snapshot != null &&
                                snapshot.RunningCount == 1 &&

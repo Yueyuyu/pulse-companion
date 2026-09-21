@@ -11,7 +11,17 @@ function Get-CompanionInstallRoot {
 }
 
 function Get-CompanionInstalledExecutable {
+    $pulse = Get-PulseInstalledExecutable
+    if ($pulse) { return $pulse }
     return (Join-Path (Get-CompanionInstallRoot) 'app\CodexQuotaOverlay.exe')
+}
+
+function Get-PulseInstalledExecutable {
+    $manifest = Join-Path (Get-CompanionInstallRoot) 'pulse-install.json'
+    if (-not (Test-Path -LiteralPath $manifest)) { return $null }
+    $installed = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+    if ($installed.schemaVersion -ne 1 -or $installed.release -notmatch '^[a-f0-9]{32}$') { throw 'Pulse 安装记录无效，未回落启动旧版。' }
+    return (Join-Path (Get-CompanionInstallRoot) ('pulse\' + $installed.release + '\PulseWebPreview.exe'))
 }
 
 function Get-CompanionInstalledProbe {
@@ -46,7 +56,7 @@ function Test-SamePath {
 
 function Get-CompanionProcesses {
     return @(
-        Get-CimInstance Win32_Process -Filter "Name = 'CodexQuotaOverlay.exe'" -ErrorAction SilentlyContinue
+        Get-CimInstance Win32_Process -Filter "Name = 'CodexQuotaOverlay.exe' OR Name = 'PulseWebPreview.exe'" -ErrorAction SilentlyContinue
     )
 }
 
@@ -74,17 +84,21 @@ function Stop-CompanionProcesses {
 
     $projectExecutable = Join-Path (Get-CompanionProjectRoot) 'bin\CodexQuotaOverlay.exe'
     $installedExecutable = Get-CompanionInstalledExecutable
+    $pulseDevelopment = Join-Path (Get-CompanionProjectRoot) 'bin\pulse-webview-preview\PulseWebPreview.exe'
+    $oldInstalled = Join-Path (Get-CompanionInstallRoot) 'app\CodexQuotaOverlay.exe'
     $allProcesses = @(Get-CompanionProcesses)
     $targetProcesses = @(
         $allProcesses | Where-Object {
-            $IncludeLegacy -or
+            ($IncludeLegacy -and $_.Name -eq 'CodexQuotaOverlay.exe') -or
+            (Test-ProcessMatchesPath -Process $_ -ExecutablePath $pulseDevelopment) -or
+            (Test-ProcessMatchesPath -Process $_ -ExecutablePath $oldInstalled) -or
             (Test-ProcessMatchesPath -Process $_ -ExecutablePath $projectExecutable) -or
             (Test-ProcessMatchesPath -Process $_ -ExecutablePath $installedExecutable)
         }
     )
 
     if ($targetProcesses.Count -eq 0) {
-        Write-Host 'Codex 桌面伴侣当前未运行。'
+        Write-Host 'Pulse Companion 当前未运行。'
         return
     }
 
@@ -107,7 +121,7 @@ function Stop-CompanionProcesses {
         Wait-Process -Id $processId -Timeout 5 -ErrorAction SilentlyContinue
     }
 
-    Write-Host "已停止 Codex 桌面伴侣进程：$($targetIds -join ', ')"
+    Write-Host "已停止 Pulse Companion 进程：$($targetIds -join ', ')"
 }
 
 function Get-ShortcutTarget {

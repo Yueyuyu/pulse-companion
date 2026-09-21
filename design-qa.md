@@ -1,6 +1,6 @@
-# v1.1.0 设计还原验收
+# 设计还原验收
 
-本记录用于确认真实 WinForms 组件是否还原 Quiet Workspace 设计，而不是只确认 HTML 原型好看。设计来源为 UI Design Lab 与 `prototypes/task-light/`；最终运行时以 `src/` 为准。
+本记录用于确认旧 WinForms 组件是否还原 Quiet Workspace 设计，而不是只确认 HTML 原型好看。设计来源为 UI Design Lab 与 `prototypes/task-light/`；旧版运行时以 `src/` 为准。当前 Pulse Companion 默认已切换 Pulse WebView2 后台版，见 [Pulse 宿主说明](prototypes/pulse-desktop/README.md)；本页是历史验收，不证明当前 Pulse 呈现。
 
 ## 验收范围
 
@@ -42,4 +42,24 @@
 | --- | --- | --- |
 | ![真实任务灯](docs/images/task-light-v1.1.0.png) | ![完成通知](docs/images/task-notification-completed-v1.1.0.png) | ![需要处理通知](docs/images/task-notification-attention-v1.1.0.png) |
 
-最终结论：`final result: passed`
+## v1.2.0 重点关注验收
+
+| Before | After | Why |
+| --- | --- | --- |
+| 任务灯只能汇总全局数量，切换工作后无法持续盯住指定对话 | 有关注任务时在同一右侧锚点展开白色“重点关注”卡片，最多常驻 5 个 | 指定任务状态无需反复打开 Codex 查找 |
+| 详情只列出待处理和进行中任务 | 增加“最近完成”分组，并在每行提供独立星标命中区域 | 已完成或暂时空闲的对话也能被选择和保留 |
+| 候选字体星标可能因系统字体回退产生歪斜 | 星标改为 GDI+ 自绘对称矢量路径，选中时使用低饱和绿色 | 保持不同 Windows 字体环境下的几何一致性 |
+| 任务刷新可能让用户关注项随状态排序跳动 | 关注列表只按选择顺序排列，状态刷新仅更新内容 | 常驻位置稳定，视觉追踪成本更低 |
+| 任务暂时不在 `thread/list` 中时缺少明确策略 | 保留最后标题和状态，以灰色“暂不可用”显示，必须手动取消 | 短暂离线或最近列表截断不会导致关注丢失 |
+| 开发预览会加载真实任务灯设置 | 预览与 UI 集成自测使用临时设置对象，`Save()` 明确无操作 | 截图和测试不会污染用户位置、置顶或关注列表 |
+
+- 状态：`passed`
+- 视觉：真实 WinForms 进程内截图确认白色卡片、14 px 圆角、细状态轨、柔和阴影、中文字体、自绘星标和四种状态标签均清晰，无黑边与歪斜。
+- 交互：集成自测覆盖加入、离线保留、取消和卡片收放；命中区域自测确认任务行与星标互不串扰。
+- 动效：常驻列表无循环、重排或装饰性动画；只保留悬停和按下反馈，并遵循 Windows 客户区动画设置。
+
+| 任务选择与星标 | 重点关注常驻卡片 |
+| --- | --- |
+| ![任务选择与星标](docs/images/task-picker-v1.2.0.png) | ![重点关注常驻卡片](docs/images/watched-tasks-v1.2.0.png) |
+
+最终结论：`v1.1.0 task light passed; v1.2.0 watched tasks passed`

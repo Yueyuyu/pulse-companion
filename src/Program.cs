@@ -38,6 +38,11 @@ namespace CodexQuotaOverlay
                 return RunThreadUriSelfTest();
             }
 
+            if (args.Length > 0 && string.Equals(args[0], "--watch-self-test", StringComparison.OrdinalIgnoreCase))
+            {
+                return RunWatchSelfTest();
+            }
+
             if (args.Length > 1 && string.Equals(args[0], "--open-thread-probe", StringComparison.OrdinalIgnoreCase))
             {
                 return RunOpenThreadProbe(args[1]);
@@ -70,16 +75,23 @@ namespace CodexQuotaOverlay
                 return RunTaskUiPreview(screenshotPath, threadId);
             }
 
+            if (args.Length > 0 && string.Equals(args[0], "--watch-ui-preview", StringComparison.OrdinalIgnoreCase))
+            {
+                string screenshotPath = args.Length > 1 ? args[1] : string.Empty;
+                string threadId = args.Length > 2 ? args[2] : "11111111-1111-4111-8111-111111111111";
+                return RunWatchUiPreview(screenshotPath, threadId);
+            }
+
             if (args.Length > 1 && string.Equals(args[0], "--notification-preview", StringComparison.OrdinalIgnoreCase))
             {
-                string threadId = args.Length > 2 ? args[2] : "019fef0d-6a70-73f3-b182-daca3a3d2ff3";
+                string threadId = args.Length > 2 ? args[2] : "11111111-1111-4111-8111-111111111111";
                 string screenshotPath = args.Length > 3 ? args[3] : string.Empty;
                 return RunNotificationPreview(args[1], threadId, screenshotPath);
             }
 
             if (args.Length > 1 && string.Equals(args[0], "--notification-flow-preview", StringComparison.OrdinalIgnoreCase))
             {
-                string threadId = args.Length > 2 ? args[2] : "019fef0d-6a70-73f3-b182-daca3a3d2ff3";
+                string threadId = args.Length > 2 ? args[2] : "11111111-1111-4111-8111-111111111111";
                 return RunNotificationFlowPreview(args[1], threadId);
             }
 #endif
@@ -173,6 +185,26 @@ namespace CodexQuotaOverlay
             bool success = CodexThreadNavigator.RunSelfTest(out result);
             Console.WriteLine(result);
             return success ? 0 : 1;
+        }
+
+        private static int RunWatchSelfTest()
+        {
+            string lifecycleResult;
+            string integrationResult;
+            string hitTargetResult;
+            string settingsResult;
+            string cardResult;
+            bool lifecycleSuccess = WatchedTaskCollection.RunSelfTest(out lifecycleResult);
+            bool integrationSuccess = TaskLightForm.RunWatchIntegrationSelfTest(out integrationResult);
+            bool hitTargetSuccess = TaskLightDetailsForm.RunWatchHitSelfTest(out hitTargetResult);
+            bool settingsSuccess = TaskLightSettings.RunWatchedTaskSerializationSelfTest(out settingsResult);
+            bool cardSuccess = WatchedTaskCard.RunSelfTest(out cardResult);
+            Console.WriteLine(lifecycleResult);
+            Console.WriteLine(integrationResult);
+            Console.WriteLine(hitTargetResult);
+            Console.WriteLine(settingsResult);
+            Console.WriteLine(cardResult);
+            return lifecycleSuccess && integrationSuccess && hitTargetSuccess && settingsSuccess && cardSuccess ? 0 : 1;
         }
 
         private static int RunOpenThreadProbe(string threadId)
@@ -292,10 +324,18 @@ namespace CodexQuotaOverlay
                     string.Empty,
                     CodexTaskState.Running,
                     "正在运行界面测试",
-                    now.AddMinutes(-3).AddSeconds(-15))
+                    now.AddMinutes(-3).AddSeconds(-15)),
+                new TaskSnapshot(
+                    "44444444-4444-4444-8444-444444444444",
+                    "整理下一版发布说明",
+                    string.Empty,
+                    string.Empty,
+                    CodexTaskState.Completed,
+                    "已完成",
+                    now.AddMinutes(-17))
             });
 
-            using (TaskLightForm form = new TaskLightForm())
+            using (TaskLightForm form = new TaskLightForm(TaskLightSettings.CreateTransient()))
             using (System.Windows.Forms.Timer captureTimer = new System.Windows.Forms.Timer())
             using (System.Windows.Forms.Timer exitTimer = new System.Windows.Forms.Timer())
             {
@@ -314,6 +354,9 @@ namespace CodexQuotaOverlay
                     {
                         captureTimer.Stop();
                         form.SavePreviewScreenshot(screenshotPath);
+                        form.CloseDetails();
+                        form.Hide();
+                        Application.ExitThread();
                     };
                     captureTimer.Start();
                 }
@@ -331,6 +374,98 @@ namespace CodexQuotaOverlay
             }
 
             Console.WriteLine("{\"ok\":true,\"preview\":\"task-ui\"}");
+            return 0;
+        }
+
+        private static int RunWatchUiPreview(string screenshotPath, string targetThreadId)
+        {
+            InitializePreviewApplication();
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            TaskSnapshot attentionTask = new TaskSnapshot(
+                targetThreadId,
+                "应用数据库迁移",
+                string.Empty,
+                string.Empty,
+                CodexTaskState.NeedsAttention,
+                "等待你批准执行命令",
+                now.AddSeconds(-28));
+            TaskSnapshot runningTask = new TaskSnapshot(
+                "22222222-2222-4222-8222-222222222222",
+                "分析交易信号延迟",
+                string.Empty,
+                string.Empty,
+                CodexTaskState.Running,
+                "正在读取运行日志",
+                now.AddMinutes(-8));
+            TaskSnapshot completedTask = new TaskSnapshot(
+                "33333333-3333-4333-8333-333333333333",
+                "修复登录页响应式布局",
+                string.Empty,
+                string.Empty,
+                CodexTaskState.Completed,
+                "已完成",
+                now.AddMinutes(-17));
+            TaskSnapshot unavailableTask = new TaskSnapshot(
+                "44444444-4444-4444-8444-444444444444",
+                "整理下一版发布说明",
+                string.Empty,
+                string.Empty,
+                CodexTaskState.Running,
+                "等待状态更新",
+                now.AddHours(-2));
+            TaskListSnapshot preview = new TaskListSnapshot(new[]
+            {
+                attentionTask,
+                runningTask,
+                completedTask
+            });
+            TaskLightSettings previewSettings = TaskLightSettings.CreateTransient();
+            previewSettings.ReplaceWatchedTasks(new[]
+            {
+                new WatchedTaskRecord(attentionTask),
+                new WatchedTaskRecord(runningTask),
+                new WatchedTaskRecord(completedTask),
+                new WatchedTaskRecord(unavailableTask)
+            });
+
+            using (TaskLightForm form = new TaskLightForm(previewSettings))
+            using (System.Windows.Forms.Timer captureTimer = new System.Windows.Forms.Timer())
+            using (System.Windows.Forms.Timer exitTimer = new System.Windows.Forms.Timer())
+            {
+                form.TaskActivated += delegate(object sender, TaskActivatedEventArgs args)
+                {
+                    string ignoredStatus;
+                    CodexThreadNavigator.TryOpen(args == null ? null : args.Task, out ignoredStatus);
+                };
+                form.ShowTaskLight();
+                form.UpdateTasks(preview);
+                if (!string.IsNullOrWhiteSpace(screenshotPath))
+                {
+                    captureTimer.Interval = 700;
+                    captureTimer.Tick += delegate
+                    {
+                        captureTimer.Stop();
+                        form.SavePreviewScreenshot(screenshotPath);
+                        form.CloseDetails();
+                        form.Hide();
+                        Application.ExitThread();
+                    };
+                    captureTimer.Start();
+                }
+
+                exitTimer.Interval = 120000;
+                exitTimer.Tick += delegate
+                {
+                    exitTimer.Stop();
+                    form.CloseDetails();
+                    form.Hide();
+                    Application.ExitThread();
+                };
+                exitTimer.Start();
+                Application.Run();
+            }
+
+            Console.WriteLine("{\"ok\":true,\"preview\":\"watched-tasks\"}");
             return 0;
         }
 

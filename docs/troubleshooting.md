@@ -1,55 +1,77 @@
-# 故障排查
+# Pulse Companion 故障排查
 
-## 一键修复
+默认检查 Pulse 后台版。旧左下角胶囊/白色任务灯的问题见文末，不要按旧版 WinForms 的渲染规则修改 WebView2 宿主。
 
-先在仓库根目录运行：
+## 构建或安装失败
 
-```powershell
-.\repair.ps1
-```
+1. 确认 Companion 与 `ui-design-lab` 都有当前配套的 Pulse 源码，而不是只有公开旧 Release。
+2. 确认 Windows x64、.NET Framework、Node/npm、WebView2 Runtime 可用；在 Lab 执行 `npm ci`。
+3. 非同级 Lab 用 `.\install-pulse.ps1 -UiLabPath 'D:\Projects\ui-design-lab'`。
+4. “本机 Pulse 资源缺失”是素材前置条件不满足，不是账户故障。按 Lab `UPSTREAM.md` 合法准备本机资源；当前品牌模式也不能跳过该校验。不要上传机器人缓存或关闭校验。
+5. SDK 下载失败时检查到 NuGet 的连接，不关闭 TLS 校验或系统安全功能。
 
-它会停止旧路径实例、重新构建、部署到稳定目录、重建开机启动项并验证。不会删除任务灯位置。
+依赖齐全后可运行 `.\repair.ps1` 重建并部署，保留个人设置。该命令会更新本机安装和启动项，不是只读诊断。
 
-## 任务灯显示灰色“Codex 离线”
+## 托盘在，但桌面没有浮条
 
-1. 确认 Codex Desktop 已安装并已登录；
-2. 运行 `.\verify.ps1 -StrictLive` 查看是路径发现、额度还是任务状态失败；
-3. 运行 `.\bin\CodexQuotaProbe.exe --codex-path-probe` 检查当前 `codex.exe`；
-4. 如果刚完成 Codex 更新，完全退出再打开 Codex，然后重试。
-
-不要通过写入 Codex 配置或关闭状态校验来把离线伪装成正常。
-
-## 左下角额度胶囊遮挡官方按钮
-
-这是 Codex 底栏布局变化，不是额度变化。记录当前 Codex 版本和截图，检查 `src/CodexWindowTracker.cs` 的定位常量，做最小位置适配后执行：
+这是后台版的正常显隐策略之一：Codex 未运行时隐藏；打开 Codex 后约 2 秒检测到并显示。没有单独任务栏按钮也是预期行为。先运行：
 
 ```powershell
-.\repair.ps1
-.\bin\CodexQuotaProbe.exe --window-probe
-```
-
-应在 Codex 主窗口存在时做真实截图验证。
-
-## 发现多个进程或启动后没有界面
-
-```powershell
-.\stop.ps1 -IncludeLegacy
-.\start.ps1
 .\verify.ps1
+.\verify.ps1 -StrictLive    # Codex 已打开且已登录时
 ```
 
-安装脚本会自动清理旧项目路径运行的同名实例。不要手工复制多个 EXE 到 Startup 文件夹。
+校验会检查安装副本、唯一进程、Startup 参数、近期心跳和实时状态；失败信息应保留，不伪装正常。手动退出托盘后需 `.\start.ps1` 或下次登录 Windows 才重开。
 
-## 毛边、黑边或阴影异常
+如果已安装但未运行，使用 `.\start.ps1`。若路径冲突或存在多个伴侣实例，确认后用 `.\stop.ps1` 再启动；不要结束 Codex 本体，不要手工复制多个 EXE 到 Startup。
 
-确认没有恢复 `CS_DROPSHADOW` 或 WinForms `Region` 裁切。任务灯和详情窗应继续使用 `LayeredWindowRenderer` 的逐像素透明渲染。在不同 DPI、不同壁纸和多显示器上实际检查，普通静态截图工具偶尔会漏拍 layered window，不能仅凭一次空截图判断窗口未渲染。
+## 额度或任务未就绪
 
-## SmartScreen 或杀毒软件提示
+- 确认 Codex 已安装、打开并登录；额度约 60 秒主动刷新，任务约 2 秒刷新，也可从托盘立即刷新。
+- `.\verify.ps1 -StrictLive` 失败表示本次真实数据未就绪，不能用 Lab 的示例页面代替。
+- 如需进一步诊断，先 `.\build.ps1`，再用 `.\bin\CodexQuotaProbe.exe --codex-path-probe`、`--probe`、`--task-probe` 做只读检查。
+- Codex 刚升级时可在任务安全结束后正常重启应用再检查；协议变化需最小适配，不能改配置或把固定百分比当真实值。
 
-程序由本机源码即时编译，当前没有代码签名。先核对仓库来源，并可运行：
+`-Offline` 在 Pulse 安装下只跳过“实时数据必须就绪”的要求，不会让正在运行的后台程序停止联网。
+
+## 关注暂不可用 / 点击任务没有跳转
+
+关注最多 5 个。离线、App Server 失败、归档或不在最近 80 条返回结果中时，会保留记录并显示暂不可用。恢复只读数据后自动更新；不再关注时手动取消星标，不要删除整个 `task-light.json`。
+
+任务跳转要求有效 UUID 和 Windows 已注册的 `codex://threads/<UUID>` 协议。先确认对应对话仍可在 Codex 中访问；查看界面错误提示，必要时修复 Codex 自身协议注册。不要通过搜索任务标题猜测并打开另一条任务。
+
+## 没收到完成通知
+
+首次连接只建立基线，不补发历史完成记录；断线后重新建立基线。只有后续新进入需处理或从执行中变为完成才通知。
+
+当前使用右下角自绘桌面通知，8 秒后收起、悬停暂停、点击跳转；自绘失败才回退托盘气泡。它不是 Windows 通知中心的原生 Toast，因此不能以通知中心没有历史记录认定没有提醒。
+
+## 悬停不收起、闪动、锯齿
+
+- 先检查是否固定展开；未固定时离开约 320ms 收起，重入取消。置顶与固定是两个不同设置。
+- 确认当前运行的是已重新部署的源码版本；只修改 Lab、Vite 页面或构建 `bin/` 不会自动替换安装副本。
+- Pulse 使用 WebView2/WPF 透明合成，必须保留 `UseLayoutRounding=false`；Region 只排除透明空白，不剪掉软边缘。
+- 开合必须保持固定透明画布与侧轨坐标，不能恢复“网页横移 + 原生窗口反向缩放”。
+- 用 `prototypes/pulse-desktop/build-webview.ps1 -Verify` 检查 24 个状态；多屏物理 DPI 和不同壁纸仍需人工检查。详见 [宿主说明](../prototypes/pulse-desktop/README.md)。
+
+## 改名后仍看到旧名字
+
+源码产品名为 Pulse Companion；已安装 EXE 不会随仓库编辑自动更新，明确更新时用 `.\repair.ps1`。即使更新后，文件名 `PulseWebPreview.exe`、Startup 的 `Codex Desktop Companion.lnk`、`CodexDesktopCompanion` 安装目录和 `CodexQuotaOverlay` 设置目录也有意保留，避免丢失状态或重复启动。
+
+GitHub 仓库和本地源码目录已改为 `pulse-companion`；已有克隆可用 `git remote set-url origin https://github.com/Yueyuyu/pulse-companion.git` 更新远程地址。不要手动移动设置或批量替换 namespace/Mutex。完整对照见 [README](../README.md)。
+
+## SmartScreen / 安全软件提示
+
+当前构建未签名，先核对来源、构建日志与文件哈希，不关闭系统防护。可检查本机输出：
 
 ```powershell
-Get-FileHash .\bin\CodexQuotaOverlay.exe -Algorithm SHA256
+Get-FileHash .\bin\pulse-webview-preview\PulseWebPreview.exe -Algorithm SHA256
 ```
 
-不要为了绕过提示关闭系统安全功能。公开发布后可考虑为 Release 构建增加代码签名。
+## 旧 Quiet Workspace 回退模式
+
+恢复方式见 [旧版说明](legacy-quiet-workspace.md)。仅当正在运行旧版时：
+
+- 左下角胶囊挡住 Codex 按钮：检查 `src/CodexWindowTracker.cs` 与真实窗口定位；默认 Pulse 不依赖该区域。
+- 白色任务灯阴影/边缘：检查 `LayeredWindowRenderer`，不恢复 `CS_DROPSHADOW` 或硬裁切；不能把该规则套到 Pulse 的可见区域穿透实现上。
+- 旧版重建使用 `.\install.ps1 -Legacy`，且不能有活动 Pulse 安装记录；`.\repair.ps1` 默认会升级到 Pulse。

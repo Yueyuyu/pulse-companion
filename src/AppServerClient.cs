@@ -33,6 +33,7 @@ namespace CodexQuotaOverlay
         public event EventHandler<TaskListEventArgs> TasksUpdated;
         public event EventHandler<TaskConnectionEventArgs> TaskConnectionChanged;
         public event EventHandler<StatusEventArgs> StatusChanged;
+        public event EventHandler<TaskConnectionEventArgs> QuotaConnectionChanged;
 
         public void Start()
         {
@@ -93,6 +94,7 @@ namespace CodexQuotaOverlay
                     if (!stopping)
                     {
                         RaiseStatus("额度服务暂时不可用，正在自动重试");
+                        RaiseQuotaConnection(false);
                         RaiseTaskConnection(false, "Codex 状态服务暂时不可用，正在重试");
                     }
                 }
@@ -234,11 +236,13 @@ namespace CodexQuotaOverlay
                         if (snapshot != null)
                         {
                             RaiseQuota(snapshot);
+                            RaiseQuotaConnection(true);
                             RaiseStatus("额度已更新");
                         }
                         else if (ContainsRateLimitPayload(resultObject))
                         {
                             RaiseStatus("没有找到可显示的周额度窗口");
+                            RaiseQuotaConnection(false);
                         }
                     }
                     finally
@@ -288,6 +292,7 @@ namespace CodexQuotaOverlay
                     {
                         Interlocked.Exchange(ref rateLimitsRequestPending, 0);
                         RaiseStatus("额度读取失败，正在自动重试");
+                        RaiseQuotaConnection(false);
                     }
                 }
             }
@@ -477,6 +482,13 @@ namespace CodexQuotaOverlay
             {
                 handler(this, new QuotaEventArgs(snapshot));
             }
+        }
+
+        private void RaiseQuotaConnection(bool connected)
+        {
+            EventHandler<TaskConnectionEventArgs> handler = QuotaConnectionChanged;
+            if (handler != null) handler(this, new TaskConnectionEventArgs(connected,
+                connected ? "额度已更新" : "无法确认最新周额度"));
         }
 
         private void RaiseTasks(TaskListSnapshot snapshot)

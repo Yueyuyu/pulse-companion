@@ -13,3 +13,11 @@ TestResults/
 *.tmp
 *.lnk
 install.local.json
+
+# 本机机器人资源、部署标记和个人设置不得进入公开仓库。
+.local-cache/
+LOCAL-ONLY.json
+task-light.json
+pulse-window.json
+pulse-applications.json
+pulse-runtime.json

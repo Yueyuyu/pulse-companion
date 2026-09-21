@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -21,8 +22,14 @@ namespace CodexQuotaOverlay
         private const int DesignPaddingRight = 12;
         private const int DesignPaddingBottom = 15;
         private const int DragThreshold = 5;
+        private const int HitNone = -1;
+        private const int HitSummary = -2;
+        private const int HitHeader = WatchedTaskCard.HitHeader;
+        private const int HitDragSurface = WatchedTaskCard.HitDragSurface;
 
         private readonly TaskLightSettings settings;
+        private readonly WatchedTaskCollection watchedTasks;
+        private readonly WatchedTaskCard watchedCard = new WatchedTaskCard();
         private readonly TaskLightDetailsForm detailsPopup;
         private readonly ToolTip tooltip;
         private readonly Timer motionTimer;
@@ -32,20 +39,36 @@ namespace CodexQuotaOverlay
         private readonly UiMotionValue feedbackMotion = new UiMotionValue(0F);
         private readonly UiMotionValue entranceMotion = new UiMotionValue(1F);
         private TaskListSnapshot snapshot = new TaskListSnapshot(null);
+        private IList<WatchedTaskView> watchedViews = new List<WatchedTaskView>().AsReadOnly();
         private bool connected;
         private string connectionStatus = "正在连接 Codex";
         private float scale = 1F;
         private bool pressed;
         private bool dragging;
         private bool shownOnce;
+        private int hoveredHit = HitNone;
+        private int pressedHit = HitNone;
         private Point dragStartCursor;
         private Point dragStartLocation;
 
         public event EventHandler<TaskActivatedEventArgs> TaskActivated;
 
-        public TaskLightForm()
+        private bool IsWatchedCardMode
         {
-            settings = TaskLightSettings.Load();
+            get { return watchedViews.Count > 0 && (detailsPopup == null || !detailsPopup.Visible); }
+        }
+
+        public TaskLightForm()
+            : this(TaskLightSettings.Load())
+        {
+        }
+
+        internal TaskLightForm(TaskLightSettings initialSettings)
+        {
+            settings = initialSettings ?? TaskLightSettings.CreateTransient();
+            watchedTasks = new WatchedTaskCollection(settings.WatchedTasks);
+            bool ignoredRecordsChanged;
+            watchedViews = watchedTasks.BuildViews(snapshot, false, out ignoredRecordsChanged);
             motionEnabled = NativeMethods.AreClientAreaAnimationsEnabled();
             AutoScaleMode = AutoScaleMode.None;
             BackColor = Color.Black;
@@ -61,7 +84,7 @@ namespace CodexQuotaOverlay
             StartPosition = FormStartPosition.Manual;
             Text = "Codex 任务灯";
             AccessibleName = "Codex 任务灯";
-            AccessibleDescription = "显示需要处理和正在执行的 Codex 任务数量。拖动可移动，点击查看详情。";
+            AccessibleDescription = "显示 Codex 任务状态与重点关注任务。拖动可移动，点击任务可打开对应对话。";
 
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer |
@@ -69,8 +92,11 @@ namespace CodexQuotaOverlay
                      ControlStyles.UserPaint, true);
 
             detailsPopup = new TaskLightDetailsForm();
+            detailsPopup.VisibleChanged += OnDetailsVisibilityChanged;
             detailsPopup.AlwaysOnTopChanged += OnAlwaysOnTopChanged;
             detailsPopup.TaskActivated += ForwardTaskActivated;
+            detailsPopup.TaskWatchToggled += OnTaskWatchToggled;
+            detailsPopup.UpdateWatchedTasks(watchedTasks.Records);
             detailsPopup.SetAlwaysOnTop(settings.AlwaysOnTop);
 
             tooltip = new ToolTip();
@@ -83,6 +109,49 @@ namespace CodexQuotaOverlay
             motionTimer = new Timer();
             motionTimer.Interval = 15;
             motionTimer.Tick += OnMotionTick;
+        }
+
+        public static bool RunWatchIntegrationSelfTest(out string result)
+        {
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            TaskSnapshot task = new TaskSnapshot(
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "重点关注集成测试",
+                string.Empty,
+                string.Empty,
+                CodexTaskState.Running,
+                "Codex 正在处理",
+                now);
+            try
+            {
+                using (TaskLightForm form = new TaskLightForm(TaskLightSettings.CreateTransient()))
+                {
+                    form.UpdateTasks(new TaskListSnapshot(new[] { task }));
+                    form.ToggleWatchedTask(task, false);
+                    bool expanded = form.watchedViews.Count == 1 &&
+                                    form.watchedCard.RowCount == 1 &&
+                                    form.GetDesignWidth() == WatchedTaskCard.DesignWidth &&
+                                    form.GetDesignHeight() > DesignHeight &&
+                                    form.watchedViews[0].Available;
+                    form.UpdateConnection(false, "Codex 暂未运行");
+                    bool retainedUnavailable = form.watchedViews.Count == 1 &&
+                                               !form.watchedViews[0].Available;
+                    form.ToggleWatchedTask(task, false);
+                    bool collapsed = form.watchedViews.Count == 0 &&
+                                     form.GetDesignHeight() == DesignHeight;
+                    bool success = expanded && retainedUnavailable && collapsed;
+                    result = success
+                        ? "{\"ok\":true,\"test\":\"watched-task-ui-integration\"}"
+                        : "{\"ok\":false,\"test\":\"watched-task-ui-integration\"}";
+                    return success;
+                }
+            }
+            catch (Exception exception)
+            {
+                result = "{\"ok\":false,\"test\":\"watched-task-ui-integration\",\"status\":\"" +
+                         EscapeSelfTestValue(exception.Message) + "\"}";
+                return false;
+            }
         }
 
         protected override bool ShowWithoutActivation
@@ -145,6 +214,7 @@ namespace CodexQuotaOverlay
             snapshot = newSnapshot ?? new TaskListSnapshot(null);
             connected = true;
             connectionStatus = "Codex 任务已更新";
+            RefreshWatchedViews(true);
             detailsPopup.UpdateTasks(snapshot);
             UpdateSize(true);
             UpdateTooltip();
@@ -170,6 +240,7 @@ namespace CodexQuotaOverlay
                 snapshot = new TaskListSnapshot(null);
             }
 
+            RefreshWatchedViews(false);
             detailsPopup.UpdateConnection(connected);
             UpdateSize(true);
             UpdateTooltip();
@@ -240,8 +311,16 @@ namespace CodexQuotaOverlay
         protected override void OnMouseEnter(EventArgs e)
         {
             base.OnMouseEnter(e);
-            hoverMotion.AnimateTo(1F, 120, UiMotionCurve.EaseOut);
-            StartMotion();
+            UpdateHoveredHit(GetHitAt(PointToClient(Cursor.Position)));
+            if (!IsWatchedCardMode)
+            {
+                hoverMotion.AnimateTo(1F, 120, UiMotionCurve.EaseOut);
+                StartMotion();
+            }
+            else
+            {
+                RenderLayeredWindow();
+            }
         }
 
         protected override void OnMouseLeave(EventArgs e)
@@ -249,8 +328,16 @@ namespace CodexQuotaOverlay
             base.OnMouseLeave(e);
             if (!Capture)
             {
-                hoverMotion.AnimateTo(0F, 120, UiMotionCurve.EaseOut);
-                StartMotion();
+                UpdateHoveredHit(HitNone);
+                if (!IsWatchedCardMode)
+                {
+                    hoverMotion.AnimateTo(0F, 120, UiMotionCurve.EaseOut);
+                    StartMotion();
+                }
+                else
+                {
+                    RenderLayeredWindow();
+                }
             }
         }
 
@@ -262,13 +349,29 @@ namespace CodexQuotaOverlay
                 return;
             }
 
+            int hit = GetHitAt(e.Location);
+            if (hit == HitNone)
+            {
+                return;
+            }
+
             dragStartCursor = Cursor.Position;
             dragStartLocation = Location;
             dragging = false;
             pressed = true;
+            pressedHit = hit;
+            hoveredHit = hit;
             Capture = true;
-            pressMotion.AnimateTo(1F, 110, UiMotionCurve.EaseOut);
-            StartMotion();
+            if (!IsWatchedCardMode)
+            {
+                pressMotion.AnimateTo(1F, 110, UiMotionCurve.EaseOut);
+                StartMotion();
+            }
+            else
+            {
+                UpdateCursorForHit(hit);
+                RenderLayeredWindow();
+            }
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -276,6 +379,7 @@ namespace CodexQuotaOverlay
             base.OnMouseMove(e);
             if (!Capture || !pressed)
             {
+                UpdateHoveredHit(GetHitAt(e.Location));
                 return;
             }
 
@@ -285,12 +389,19 @@ namespace CodexQuotaOverlay
             if (!dragging && Math.Abs(deltaX) + Math.Abs(deltaY) >= S(DragThreshold))
             {
                 dragging = true;
-                pressMotion.AnimateTo(0F, 110, UiMotionCurve.EaseOut);
-                StartMotion();
+                pressedHit = HitNone;
+                hoveredHit = HitNone;
+                if (!IsWatchedCardMode)
+                {
+                    pressMotion.AnimateTo(0F, 110, UiMotionCurve.EaseOut);
+                    StartMotion();
+                }
+                UpdateCursorForHit(HitDragSurface);
             }
 
             if (!dragging)
             {
+                UpdateHoveredHit(GetHitAt(e.Location));
                 return;
             }
 
@@ -311,23 +422,38 @@ namespace CodexQuotaOverlay
             }
 
             bool wasDragging = dragging;
+            int action = pressedHit;
+            int releasedHit = GetHitAt(e.Location);
             pressed = false;
             dragging = false;
+            pressedHit = HitNone;
             Capture = false;
-            pressMotion.AnimateTo(0F, 140, UiMotionCurve.EaseOut);
-            StartMotion();
+            UpdateHoveredHit(releasedHit);
+            if (!IsWatchedCardMode)
+            {
+                pressMotion.AnimateTo(0F, 140, UiMotionCurve.EaseOut);
+                StartMotion();
+            }
+            else
+            {
+                RenderLayeredWindow();
+            }
             if (wasDragging)
             {
                 SavePosition();
                 return;
             }
 
-            ToggleDetails();
+            if (action != HitNone && action == releasedHit)
+            {
+                ExecuteHit(action);
+            }
         }
 
         protected override void OnSizeChanged(EventArgs e)
         {
             base.OnSizeChanged(e);
+            BuildWatchedLayout();
             RenderLayeredWindow();
         }
 
@@ -335,7 +461,9 @@ namespace CodexQuotaOverlay
         {
             if (disposing)
             {
+                detailsPopup.VisibleChanged -= OnDetailsVisibilityChanged;
                 detailsPopup.TaskActivated -= ForwardTaskActivated;
+                detailsPopup.TaskWatchToggled -= OnTaskWatchToggled;
                 tooltip.Dispose();
                 motionTimer.Dispose();
                 detailsPopup.Dispose();
@@ -367,25 +495,36 @@ namespace CodexQuotaOverlay
                 UiDrawing.Configure(graphics);
 
                 RectangleF cardBounds = GetCardBounds();
-                float pressScale = motionEnabled ? 1F - pressMotion.Current * 0.018F : 1F;
-                float verticalShift = motionEnabled ? SFloat(0.6F) * pressMotion.Current : 0F;
+                bool hasWatchedTasks = IsWatchedCardMode;
+                float pressScale = motionEnabled && !hasWatchedTasks ? 1F - pressMotion.Current * 0.018F : 1F;
+                float verticalShift = motionEnabled && !hasWatchedTasks ? SFloat(0.6F) * pressMotion.Current : 0F;
                 cardBounds = ScaleBounds(cardBounds, pressScale);
                 cardBounds.Offset(0F, verticalShift);
 
-                UiDrawing.DrawCompactShadow(graphics, cardBounds, SFloat(11F), scale);
-                Color backgroundColor = UiDrawing.Blend(
-                    TaskLightVisualStyle.Paper,
-                    TaskLightVisualStyle.SurfaceSubtle,
-                    hoverMotion.Current);
-                backgroundColor = UiDrawing.Blend(
-                    backgroundColor,
-                    TaskLightVisualStyle.SurfaceSelected,
-                    pressMotion.Current);
+                if (hasWatchedTasks)
+                {
+                    UiDrawing.DrawPanelShadow(graphics, cardBounds, SFloat(14F), scale);
+                }
+                else
+                {
+                    UiDrawing.DrawCompactShadow(graphics, cardBounds, SFloat(11F), scale);
+                }
+
+                Color backgroundColor = hasWatchedTasks
+                    ? TaskLightVisualStyle.Paper
+                    : UiDrawing.Blend(TaskLightVisualStyle.Paper, TaskLightVisualStyle.SurfaceSubtle, hoverMotion.Current);
+                if (!hasWatchedTasks)
+                {
+                    backgroundColor = UiDrawing.Blend(
+                        backgroundColor,
+                        TaskLightVisualStyle.SurfaceSelected,
+                        pressMotion.Current);
+                }
                 Color borderColor = UiDrawing.Blend(
                     TaskLightVisualStyle.Border,
                     TaskLightVisualStyle.BorderStrong,
-                    hoverMotion.Current);
-                using (GraphicsPath card = UiDrawing.CreateRoundedPath(cardBounds, SFloat(11F)))
+                    hasWatchedTasks ? (hoveredHit == HitNone ? 0F : 0.32F) : hoverMotion.Current);
+                using (GraphicsPath card = UiDrawing.CreateRoundedPath(cardBounds, SFloat(hasWatchedTasks ? 14F : 11F)))
                 using (SolidBrush background = new SolidBrush(backgroundColor))
                 using (Pen border = new Pen(borderColor, Math.Max(1F, scale)))
                 {
@@ -393,8 +532,15 @@ namespace CodexQuotaOverlay
                     graphics.DrawPath(border, card);
                 }
 
-                DrawStatusContent(graphics, cardBounds);
-                DrawFeedback(graphics, cardBounds);
+                if (hasWatchedTasks)
+                {
+                    watchedCard.Draw(graphics, cardBounds, hoveredHit, pressedHit, scale);
+                }
+                else
+                {
+                    DrawStatusContent(graphics, cardBounds);
+                    DrawFeedback(graphics, cardBounds);
+                }
             }
 
             return bitmap;
@@ -524,6 +670,19 @@ namespace CodexQuotaOverlay
             }
         }
 
+        private void OnDetailsVisibilityChanged(object sender, EventArgs args)
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            // 选择多个任务时保持详情面板稳定；详情关闭后再展开常驻关注卡片。
+            UpdateSize(true);
+            UpdateTooltip();
+            RenderLayeredWindow();
+        }
+
         private void OnAlwaysOnTopChanged(object sender, EventArgs args)
         {
             settings.AlwaysOnTop = detailsPopup.AlwaysOnTop;
@@ -537,6 +696,92 @@ namespace CodexQuotaOverlay
             if (handler != null && args != null && args.Task != null)
             {
                 handler(this, new TaskActivatedEventArgs(args.Task));
+            }
+        }
+
+        private void OnTaskWatchToggled(object sender, TaskActivatedEventArgs args)
+        {
+            ToggleWatchedTask(args == null ? null : args.Task, true);
+        }
+
+        private void ToggleWatchedTask(TaskSnapshot task, bool showDetailsFeedback)
+        {
+            WatchToggleResult result = watchedTasks.Toggle(task);
+            if (result == WatchToggleResult.InvalidTask)
+            {
+                if (showDetailsFeedback)
+                {
+                    detailsPopup.ShowWatchFeedback("这个任务暂时无法关注", true);
+                }
+
+                return;
+            }
+
+            if (result == WatchToggleResult.LimitReached)
+            {
+                if (showDetailsFeedback)
+                {
+                    detailsPopup.ShowWatchFeedback("最多关注 5 个任务", true);
+                }
+
+                return;
+            }
+
+            PersistWatchedTasks();
+            RefreshWatchedViews(false);
+            hoveredHit = HitNone;
+            pressedHit = HitNone;
+            UpdateSize(true);
+            UpdateTooltip();
+            if (showDetailsFeedback)
+            {
+                detailsPopup.ShowWatchFeedback(
+                    result == WatchToggleResult.Added ? "已加入重点关注" : "已取消重点关注",
+                    false);
+            }
+
+            RenderLayeredWindow();
+        }
+
+        private void RefreshWatchedViews(bool persistRecordChanges)
+        {
+            bool recordsChanged;
+            watchedViews = watchedTasks.BuildViews(snapshot, connected, out recordsChanged);
+            detailsPopup.UpdateWatchedTasks(watchedTasks.Records);
+            if (recordsChanged && persistRecordChanges)
+            {
+                PersistWatchedTasks();
+            }
+        }
+
+        private void PersistWatchedTasks()
+        {
+            settings.ReplaceWatchedTasks(watchedTasks.Records);
+            settings.Save();
+        }
+
+        private void ExecuteHit(int hit)
+        {
+            if (hit == HitSummary || hit == HitHeader)
+            {
+                ToggleDetails();
+                return;
+            }
+
+            TaskSnapshot hitTask;
+            if (watchedCard.TryGetUnwatchTask(hit, out hitTask))
+            {
+                ToggleWatchedTask(hitTask, false);
+                return;
+            }
+
+            if (watchedCard.TryGetRowTask(hit, out hitTask))
+            {
+                EventHandler<TaskActivatedEventArgs> handler = TaskActivated;
+                if (handler != null)
+                {
+                    handler(this, new TaskActivatedEventArgs(hitTask));
+                }
             }
         }
 
@@ -582,6 +827,7 @@ namespace CodexQuotaOverlay
             Size newSize = GetSurfaceSize(designWidth);
             if (ClientSize == newSize)
             {
+                BuildWatchedLayout();
                 return;
             }
 
@@ -591,6 +837,7 @@ namespace CodexQuotaOverlay
                 : currentVisual.Right;
             int visualTop = currentVisual.Top;
             ClientSize = newSize;
+            BuildWatchedLayout();
             if (Visible && preserveRightEdge)
             {
                 // 状态文字改变宽度时围绕同一可见右边缘伸缩，阴影留白不参与定位。
@@ -604,6 +851,11 @@ namespace CodexQuotaOverlay
 
         private int GetDesignWidth()
         {
+            if (IsWatchedCardMode)
+            {
+                return WatchedTaskCard.DesignWidth;
+            }
+
             if (!connected)
             {
                 return DesignOfflineWidth;
@@ -626,7 +878,25 @@ namespace CodexQuotaOverlay
         {
             return new Size(
                 S(designWidth + DesignPaddingLeft + DesignPaddingRight),
-                S(DesignHeight + DesignPaddingTop + DesignPaddingBottom));
+                S(GetDesignHeight() + DesignPaddingTop + DesignPaddingBottom));
+        }
+
+        private int GetDesignHeight()
+        {
+            return IsWatchedCardMode
+                ? WatchedTaskCard.GetDesignHeight(watchedViews.Count)
+                : DesignHeight;
+        }
+
+        private void BuildWatchedLayout()
+        {
+            if (!IsWatchedCardMode || ClientSize.Width <= 0 || ClientSize.Height <= 0)
+            {
+                watchedCard.Build(Rectangle.Empty, scale, null);
+                return;
+            }
+
+            watchedCard.Build(Rectangle.Round(GetCardBounds()), scale, watchedViews);
         }
 
         private RectangleF GetCardBounds()
@@ -725,10 +995,54 @@ namespace CodexQuotaOverlay
             detailsPopup.SetAlwaysOnTop(settings.AlwaysOnTop);
         }
 
+        private int GetHitAt(Point location)
+        {
+            if (!GetCardBounds().Contains(location))
+            {
+                return HitNone;
+            }
+
+            if (!IsWatchedCardMode)
+            {
+                return HitSummary;
+            }
+
+            return watchedCard.HitTest(location);
+        }
+
+        private void UpdateHoveredHit(int hit)
+        {
+            if (hoveredHit == hit)
+            {
+                UpdateCursorForHit(hit);
+                return;
+            }
+
+            hoveredHit = hit;
+            UpdateCursorForHit(hit);
+            if (IsWatchedCardMode)
+            {
+                RenderLayeredWindow();
+            }
+        }
+
+        private void UpdateCursorForHit(int hit)
+        {
+            Cursor = dragging || hit == HitDragSurface
+                ? Cursors.SizeAll
+                : (hit == HitNone ? Cursors.Default : Cursors.Hand);
+        }
+
         private void UpdateTooltip()
         {
             string text;
-            if (!connected)
+            if (IsWatchedCardMode)
+            {
+                text = "重点关注 " + watchedViews.Count.ToString(CultureInfo.InvariantCulture) +
+                       " 个任务" + Environment.NewLine +
+                       "点击任务打开对应对话，点击星标取消关注";
+            }
+            else if (!connected)
             {
                 text = connectionStatus;
             }
@@ -742,14 +1056,32 @@ namespace CodexQuotaOverlay
                 text = "Codex 当前空闲，所有任务已完成";
             }
 
-            tooltip.SetToolTip(this, text + Environment.NewLine + "拖动可移动，点击查看详情");
+            tooltip.SetToolTip(
+                this,
+                text + Environment.NewLine + (IsWatchedCardMode
+                    ? "拖动卡片可移动，点击标题查看全部任务"
+                    : "拖动可移动，点击查看详情"));
         }
 
         private void TriggerFeedback()
         {
+            if (IsWatchedCardMode)
+            {
+                RenderLayeredWindow();
+                return;
+            }
+
             feedbackMotion.JumpTo(1F);
             feedbackMotion.AnimateTo(0F, 240, UiMotionCurve.EaseOut);
             StartMotion();
+        }
+
+
+        private static string EscapeSelfTestValue(string value)
+        {
+            return string.IsNullOrEmpty(value)
+                ? string.Empty
+                : value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", " ").Replace("\n", " ");
         }
 
         private int S(int value)

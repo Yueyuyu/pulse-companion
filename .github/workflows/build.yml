@@ -1,4 +1,4 @@
-name: Windows build
+name: Pulse Companion · 共享业务与旧版构建
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build
+      - name: Build shared business and legacy WinForms
         shell: powershell
         run: .\build.ps1
 
@@ -23,6 +23,6 @@ jobs:
       - name: Upload unsigned binaries
         uses: actions/upload-artifact@v4
         with:
-          name: codex-desktop-companion-windows-x64-unsigned
+          name: pulse-companion-legacy-windows-x64-unsigned
           path: bin/*.exe
           if-no-files-found: error

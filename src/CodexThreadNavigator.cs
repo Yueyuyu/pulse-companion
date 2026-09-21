@@ -57,11 +57,11 @@ namespace CodexQuotaOverlay
         {
             Uri valid;
             Uri invalid;
-            bool success = TryBuildUri("019fef0d-6a70-73f3-b182-daca3a3d2ff3", out valid) &&
+            bool success = TryBuildUri("11111111-1111-4111-8111-111111111111", out valid) &&
                            valid != null &&
                            string.Equals(
                                valid.AbsoluteUri,
-                               "codex://threads/019fef0d-6a70-73f3-b182-daca3a3d2ff3",
+                               "codex://threads/11111111-1111-4111-8111-111111111111",
                                StringComparison.OrdinalIgnoreCase) &&
                            !TryBuildUri("../../settings", out invalid);
             result = success

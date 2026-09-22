@@ -54,6 +54,7 @@
 - `webview/`：透明 WPF + Microsoft WebView2 CompositionControl，负责窗口/命中区域/后台协调；业务复用根 `src/`。
 - 界面来自 Lab 的 `systems/pulse-desktop/desktop`，与 Gallery 复用 React/SVG 组件及 Pulse 原版样式/动作；Lab 始终是示例数据。
 - 使用 Microsoft.Web.WebView2 `1.0.4191.47` SDK（构建时下载 NuGet），运行需 Evergreen WebView2 Runtime；没有引入 Electron。
+- 应用/托盘图标取自 `assets/icons/`，编译时分别嵌入原生 EXE 图标和托盘资源；来源及再生成见 [图标说明](../../assets/icons/README.md)。常规构建不需要图像工具，`--live-self-test` 检查 Windows 原生图标及八种托盘尺寸的透明边缘、圆环和脉冲线。
 - WebView profile 独立于 Codex；禁止外部导航、弹窗、下载和权限申请，bridge 不提供任意 shell/文件能力。
 - 动态机器人仅限合法准备的本机隔离资源；缺失时构建停止。输出 `bin/pulse-webview-preview` 含 `renderer/LOCAL-ONLY.json`，不可公开上传；许可证和来源见 Lab `UPSTREAM.md`。
 

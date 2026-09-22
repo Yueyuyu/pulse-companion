@@ -15,6 +15,7 @@ namespace CodexCompanion.PulseWebPreview {
     readonly DispatcherTimer timer;
     readonly TaskLightNotifier notifier;
     readonly Forms.NotifyIcon tray;
+    readonly PulseTrayIcon trayArtwork;
     readonly PulseWindowSettings preferences;
     readonly bool verification;
     readonly bool background;
@@ -40,7 +41,9 @@ namespace CodexCompanion.PulseWebPreview {
       widget.Command+=Command;
       widget.PlacementChanged+=SavePlacement;
       widget.Failed+=delegate {Model.Disconnect();Model.Notice="桌面呈现连接异常，请从托盘刷新或重新启动";};
-      tray=new Forms.NotifyIcon {Icon=System.Drawing.SystemIcons.Application,Text="Pulse Companion · 应用状态",Visible=!verify};
+      tray=new Forms.NotifyIcon {Text="Pulse Companion · 应用状态"};
+      trayArtwork=new PulseTrayIcon(tray,widget.Dispatcher,!verify);
+      tray.Visible=!verify;
       var menu=new Forms.ContextMenuStrip();
       menu.Items.Add("展开 Pulse Companion",null,delegate {ShowFromTray();});
       menu.Items.Add("立即刷新",null,delegate {Refresh();});
@@ -176,7 +179,7 @@ namespace CodexCompanion.PulseWebPreview {
     }
     void StopClient() {var old=client;client=null;if(old!=null)old.Dispose();notifier.Reset();}
     public void Dispose() {
-      if(disposed)return;disposed=true;timer.Stop();accounts.Changed-=Publish;accounts.Dispose();StopClient();notifier.Dispose();tray.Visible=false;tray.Dispose();
+      if(disposed)return;disposed=true;timer.Stop();accounts.Changed-=Publish;accounts.Dispose();StopClient();notifier.Dispose();tray.Visible=false;tray.Dispose();trayArtwork.Dispose();
       widget.Command-=Command;widget.Ready-=Start;widget.PlacementChanged-=SavePlacement;
     }
   }

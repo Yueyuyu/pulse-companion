@@ -25,7 +25,10 @@ $references+=@('Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.Wpf.dll
 $sources=Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'webview') -Filter '*.cs' | ForEach-Object {$_.FullName}
 $sources+=Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -Filter '*.cs' -Recurse | ForEach-Object {$_.FullName}
 $executable=Join-Path $outputRoot 'PulseWebPreview.exe'
-& $compiler /nologo /target:winexe /main:CodexCompanion.PulseWebPreview.Program /platform:x64 /codepage:65001 /warn:4 ('/out:'+$executable) ('/win32manifest:'+(Join-Path $PSScriptRoot 'preview.manifest')) @references @sources
+$appIcon=Join-Path $repoRoot 'assets\icons\pulse-app.ico'
+$trayIcon=Join-Path $repoRoot 'assets\icons\pulse-tray.ico'
+foreach($icon in @($appIcon,$trayIcon)){if(!(Test-Path -LiteralPath $icon)){throw "缺少 Pulse 图标：$icon"}}
+& $compiler /nologo /target:winexe /main:CodexCompanion.PulseWebPreview.Program /platform:x64 /codepage:65001 /warn:4 ('/out:'+$executable) ('/win32manifest:'+(Join-Path $PSScriptRoot 'preview.manifest')) ('/win32icon:'+$appIcon) ('/resource:'+$trayIcon+',PulseCompanion.TrayIcon') @references @sources
 if($LASTEXITCODE -ne 0){throw 'Windows WebView2 宿主编译失败。'}
 Copy-Item -Path (Join-Path $sdkRoot 'lib\net462\*.dll') -Destination $outputRoot -Force
 Copy-Item -LiteralPath (Join-Path $sdkRoot 'runtimes\win-x64\native\WebView2Loader.dll') -Destination $outputRoot -Force

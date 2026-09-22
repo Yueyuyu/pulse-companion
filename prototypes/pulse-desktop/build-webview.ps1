@@ -1,7 +1,8 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 [CmdletBinding()]
-param([switch]$Run,[switch]$Verify,[switch]$VerifyLive,[switch]$Live,[switch]$InspectWindow,[string]$UiLabPath=(Join-Path $PSScriptRoot '..\..\..\ui-design-lab'))
+param([switch]$Run,[switch]$Verify,[switch]$VerifyLive,[switch]$Live,[switch]$InspectWindow,[string]$UiLabPath='')
 $ErrorActionPreference='Stop'
+if([string]::IsNullOrWhiteSpace($UiLabPath)){$UiLabPath=Join-Path $PSScriptRoot '..\..\..\ui-design-lab'}
 $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $outputRoot=Join-Path $repoRoot 'bin\pulse-webview-preview'
 $sdkRoot=Join-Path $repoRoot 'bin\webview2-sdk'
@@ -56,7 +57,7 @@ if($VerifyLive){
   }
 }
 if($Run){
-  $runtimeArgs=@();if($Live){$runtimeArgs+='--live'};if($InspectWindow){$runtimeArgs+='--inspect-window'}
+  $runtimeArgs=@();if($Live){$runtimeArgs+='--live'}else{$runtimeArgs+='--demo'};if($InspectWindow){$runtimeArgs+='--inspect-window'}
   if($runtimeArgs.Count){Start-Process -FilePath $executable -ArgumentList $runtimeArgs -WindowStyle Hidden | Out-Null}
   else {Start-Process -FilePath $executable -WindowStyle Hidden | Out-Null}
 }

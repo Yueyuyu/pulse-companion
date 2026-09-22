@@ -16,6 +16,25 @@ namespace CodexCompanion.PulseWebPreview {
       Directory.CreateDirectory(root);
       var checks=new List<string>();
       try {
+        var automatic=PulseStartupOptions.Parse(new string[0]);
+        Require(automatic.Live&&automatic.Background&&!automatic.SelfTest&&automatic.VisualReportPath==null,"无参数只能启动正常后台");
+        var scheduled=PulseStartupOptions.Parse(new[]{"--live","--background"});
+        Require(scheduled.Live&&scheduled.Background&&!scheduled.InspectWindow,"计划任务后台参数");
+        var demo=PulseStartupOptions.Parse(new[]{"--demo"});
+        Require(!demo.Live&&!demo.Background,"示例必须显式进入");
+        Require(PulseStartupOptions.Parse(new[]{"--verify",root}).VisualReportPath==root,"显式视觉验收入口");
+        Require(PulseStartupOptions.Parse(new[]{"--verify-live",Path.Combine(root,"live.json")}).VerifyLive,"显式实时验收入口");
+        Require(PulseStartupOptions.Parse(new[]{"--live-self-test",Path.Combine(root,"self.json")}).SelfTest,"无窗口自测入口");
+        foreach(var invalid in new[]{new[]{"--verify"},new[]{"--verify","--live"},new[]{"--verify",root,"--live"},new[]{"--live","--demo"},new[]{"--background"},new[]{"--live","--live"},new[]{"--live","--background","--inspect-window"},new[]{"--unknown"}}) {
+          bool rejected=false;try{PulseStartupOptions.Parse(invalid);}catch(ArgumentException){rejected=true;}
+          Require(rejected,"混合或非法入口不得回落到示例");
+        }
+        string pause=Path.Combine(root,"pause","background.pause");
+        Require(!PulseBackgroundPause.IsPaused(pause)&&PulseBackgroundPause.TryPause(pause)&&PulseBackgroundPause.IsPaused(pause),"主动退出保存暂停标记");
+        File.Delete(pause);Require(!PulseBackgroundPause.IsPaused(pause),"重新启动可清除暂停");
+        string blockedPause=Path.Combine(root,"blocked-pause");File.WriteAllText(blockedPause,"fixture");
+        Require(!PulseBackgroundPause.TryPause(Path.Combine(blockedPause,"pause")),"暂停写入失败不得报告成功");
+        checks.Add("startup-default-background-explicit-demo-verification-pause");
         string path=Path.Combine(root,"task-light.json");
         var appearancePath=Path.Combine(root,"appearance.json");
         var appearance=PulseAppearanceSettings.Load(appearancePath);

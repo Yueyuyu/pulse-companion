@@ -1,5 +1,6 @@
 ﻿#requires -Version 5.1
 Set-StrictMode -Version 2.0
+. (Join-Path $PSScriptRoot 'pulse-background-task.ps1')
 
 function Get-CompanionProjectRoot {
     return (Split-Path -Parent $PSScriptRoot)

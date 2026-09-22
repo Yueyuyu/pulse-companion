@@ -46,7 +46,12 @@ namespace CodexCompanion.PulseWebPreview {
       icons.DropDownItems.Add("机器人",null,delegate {SetIcon("codex","robot");});menu.Items.Add(icons);
       var topmost=new Forms.ToolStripMenuItem("始终置顶") {Checked=Model.AlwaysOnTop,CheckOnClick=true};
       topmost.Click+=delegate {if(Model.SetAlwaysOnTop(topmost.Checked))widget.Topmost=topmost.Checked;else topmost.Checked=Model.AlwaysOnTop;Publish();};menu.Items.Add(topmost);
-      menu.Items.Add("退出 Pulse Companion",null,delegate {Application.Current.Shutdown();});tray.ContextMenuStrip=menu;
+      menu.Items.Add("退出并暂停自动恢复",null,delegate {
+        if(!verification&&!PulseBackgroundPause.TryPause(PulseBackgroundPause.FilePath)) {
+          Model.Notice="无法保存暂停状态，未退出；请检查本机设置目录";Publish();return;
+        }
+        Application.Current.Shutdown();
+      });tray.ContextMenuStrip=menu;
       tray.DoubleClick+=delegate {ShowFromTray();};
       timer=new DispatcherTimer {Interval=TimeSpan.FromSeconds(2)};timer.Tick+=Tick;
     }

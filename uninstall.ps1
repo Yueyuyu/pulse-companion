@@ -20,6 +20,7 @@ if (-not $installRoot.StartsWith($localAppData + '\', [StringComparison]::Ordina
     throw "拒绝删除未通过边界校验的安装目录：$installRoot"
 }
 
+Remove-PulseBackgroundTask
 Stop-CompanionProcesses -IncludeLegacy
 
 foreach ($shortcutPath in $shortcutPaths) {

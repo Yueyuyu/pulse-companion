@@ -21,9 +21,13 @@
 .\verify.ps1 -StrictLive    # Codex 已打开且已登录时
 ```
 
-校验会检查安装副本、唯一进程、Startup 参数、近期心跳和实时状态；失败信息应保留，不伪装正常。手动退出托盘后需 `.\start.ps1` 或下次登录 Windows 才重开。
+校验会检查安装副本、唯一进程、当前用户计划任务及恢复策略、近期心跳和实时状态；失败信息应保留，不伪装正常。托盘主动退出或 `stop.ps1` 会暂停自动恢复，跨登录保留；运行 `.\start.ps1` 才重开。
 
 如果已安装但未运行，使用 `.\start.ps1`。若路径冲突或存在多个伴侣实例，确认后用 `.\stop.ps1` 再启动；不要结束 Codex 本体，不要手工复制多个 EXE 到 Startup。
+
+若提示“缺少匹配的后台计划任务”，旧安装还没有恢复机制，运行 `.\repair.ps1` 迁移。当前任务名为 `\Pulse Companion`，只有一个当前用户任务，正常运行时忽略每分钟重复触发；意外退出后通常一分钟左右重新拉起。Windows 计划任务服务停止、系统休眠或任务被外部禁用时不能保证恢复时限，先检查任务与系统状态，不绕过权限校验。
+
+Codex 的 Windows 桌面包内部进程可能叫 `ChatGPT.exe`；应结合 `OpenAI.Codex_...\app\ChatGPT.exe` 安装路径识别，不能仅凭进程名认为它是另一款应用。
 
 ## 额度或任务未就绪
 
@@ -52,11 +56,11 @@
 - 确认当前运行的是已重新部署的源码版本；只修改 Lab、Vite 页面或构建 `bin/` 不会自动替换安装副本。
 - Pulse 使用 WebView2/WPF 透明合成，必须保留 `UseLayoutRounding=false`；Region 只排除透明空白，不剪掉软边缘。
 - 开合必须保持固定透明画布与侧轨坐标，不能恢复“网页横移 + 原生窗口反向缩放”。
-- 用 `prototypes/pulse-desktop/build-webview.ps1 -Verify` 检查 24 个状态；多屏物理 DPI 和不同壁纸仍需人工检查。详见 [宿主说明](../prototypes/pulse-desktop/README.md)。
+- `prototypes/pulse-desktop/build-webview.ps1 -Verify` 会主动移动、缩放并切换 24 个测试状态，执行前必须告知用户；它不是正常后台启动或定时自检。仅修复后台启动时不需要运行。多屏物理 DPI 和不同壁纸仍需人工检查。详见 [宿主说明](../prototypes/pulse-desktop/README.md)。
 
 ## 改名后仍看到旧名字
 
-源码产品名为 Pulse Companion；已安装 EXE 不会随仓库编辑自动更新，明确更新时用 `.\repair.ps1`。即使更新后，文件名 `PulseWebPreview.exe`、Startup 的 `Codex Desktop Companion.lnk`、`CodexDesktopCompanion` 安装目录和 `CodexQuotaOverlay` 设置目录也有意保留，避免丢失状态或重复启动。
+源码产品名为 Pulse Companion；已安装 EXE 不会随仓库编辑自动更新，明确更新时用 `.\repair.ps1`。即使更新后，文件名 `PulseWebPreview.exe`、`CodexDesktopCompanion` 安装目录和 `CodexQuotaOverlay` 设置目录也有意保留，避免丢失状态。旧 `Codex Desktop Companion.lnk` 仅保留在迁移备份/回退流程，当前后台入口已改为 `\Pulse Companion` 计划任务。
 
 GitHub 仓库和本地源码目录已改为 `pulse-companion`；已有克隆可用 `git remote set-url origin https://github.com/Yueyuyu/pulse-companion.git` 更新远程地址。不要手动移动设置或批量替换 namespace/Mutex。完整对照见 [README](../README.md)。
 

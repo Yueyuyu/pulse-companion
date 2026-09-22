@@ -23,7 +23,20 @@ else {
 
 $allProcesses = @(Get-CompanionProcesses)
 $matchingProcesses = @($allProcesses | Where-Object { Test-ProcessMatchesPath -Process $_ -ExecutablePath $executable })
+$pulseTask = $null
+if ((Split-Path -Leaf $executable) -eq 'PulseWebPreview.exe') {
+    $pulseTask = Get-PulseBackgroundTask
+    if (-not $pulseTask -or -not (Test-SamePath $pulseTask.Definition.Actions.Item(1).Path $executable)) {
+        throw '缺少匹配的 Pulse 后台计划任务，请运行 .\repair.ps1 完成安装修复。'
+    }
+}
 if ($matchingProcesses.Count -gt 0) {
+    if ($matchingProcesses.Count -ne 1 -or $allProcesses.Count -ne 1) { throw '检测到多个伴侣实例，请先运行 stop.ps1。' }
+    if ($pulseTask) {
+        if ($matchingProcesses[0].CommandLine -notmatch '\s--live\s+--background\s*$') { throw '正在运行检查窗口，请先运行 stop.ps1。' }
+        Set-PulseBackgroundPaused $false
+        $pulseTask.Enabled = $true
+    }
     Write-Host 'Pulse Companion 已经在运行。'
     return
 }
@@ -34,12 +47,14 @@ if ($allProcesses.Count -gt 0) {
 }
 
 if ((Split-Path -Leaf $executable) -eq 'PulseWebPreview.exe') {
-    Start-Process -FilePath $executable -ArgumentList '--live --background' -WorkingDirectory $workingDirectory -WindowStyle Hidden
+    Set-PulseBackgroundPaused $false
+    $pulseTask.Enabled = $true
+    [void]$pulseTask.Run($null)
 } else {
     Start-Process -FilePath $executable -WorkingDirectory $workingDirectory -WindowStyle Hidden
 }
 
-$deadline = (Get-Date).AddSeconds(5)
+$deadline = (Get-Date).AddSeconds(15)
 do {
     Start-Sleep -Milliseconds 200
     $matchingProcesses = @(Get-CompanionProcesses | Where-Object { Test-ProcessMatchesPath -Process $_ -ExecutablePath $executable })

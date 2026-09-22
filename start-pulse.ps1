@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 [CmdletBinding()]
 param([switch]$InspectWindow)
 $ErrorActionPreference='Stop'
@@ -15,19 +15,22 @@ $running=@(Get-CimInstance Win32_Process | Where-Object {$_.Name -in @('CodexQuo
 foreach($item in $running){
   if(!$item.ExecutablePath -or $item.ExecutablePath -notin $allowedPaths){throw '发现未知路径的伴侣进程，未停止任何程序。请确认后手动关闭。'}
 }
-# 只切换运行进程；共享单实例锁防止双份通知，旧安装、设置和 Startup 快捷方式都不改。
-foreach($item in $running){
-  $oldProcess=Get-Process -Id $item.ProcessId -ErrorAction SilentlyContinue
-  if($oldProcess){
-    Stop-Process -Id $item.ProcessId -ErrorAction Stop
-    if(!$oldProcess.WaitForExit(5000)){throw '旧伴侣尚未退出，未启动第二个实例。'}
-    $oldProcess.Dispose()
+# 检查窗口期间暂停后台恢复；检查结束后用 start.ps1 恢复正常后台。
+$backgroundTask=Get-PulseBackgroundTask
+$previousPaused=Test-Path -LiteralPath (Get-PulsePausePath)
+if($backgroundTask){Set-PulseBackgroundPaused $true}
+try {
+  Stop-CompanionProcesses
+  $pulseArgs=@('--live');if($InspectWindow){$pulseArgs+='--inspect-window'}
+  $pulseProcess=Start-Process -FilePath $pulseExe -ArgumentList $pulseArgs -PassThru -WindowStyle Hidden
+  if($pulseProcess.WaitForExit(1500)){throw "Pulse 检查窗口启动失败（退出码 $($pulseProcess.ExitCode)）。"}
+} catch {
+  if($backgroundTask){
+    Set-PulseBackgroundPaused $previousPaused
+    if(-not $previousPaused){& (Join-Path $pulseRoot 'start.ps1')}
+  } elseif($running.Count -gt 0 -and (Test-Path -LiteralPath $legacyExe)){
+    Start-Process -FilePath $legacyExe -WindowStyle Hidden | Out-Null
   }
+  throw
 }
-$pulseArgs=@('--live');if($InspectWindow){$pulseArgs+='--inspect-window'}
-$pulseProcess=Start-Process -FilePath $pulseExe -ArgumentList $pulseArgs -PassThru -WindowStyle Hidden
-if($pulseProcess.WaitForExit(1500)){
-  if(Test-Path -LiteralPath $legacyExe){Start-Process -FilePath $legacyExe -WindowStyle Hidden | Out-Null}
-  throw "Pulse 启动失败（退出码 $($pulseProcess.ExitCode)），已尝试恢复旧伴侣。"
-}
-Write-Output "Pulse Companion 实时窗口已启动（PID $($pulseProcess.Id)）。旧安装及启动项未修改。"
+Write-Output "Pulse Companion 检查窗口已启动（PID $($pulseProcess.Id)）；正常后台恢复已暂停。检查结束后运行 stop.ps1，再运行 start.ps1。"

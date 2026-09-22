@@ -19,7 +19,7 @@ New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 $compiler='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $frameworkRoot=Split-Path -Parent $compiler
 $wpfRoot=Join-Path $frameworkRoot 'WPF'
-$references=@('System.dll','System.Core.dll','System.Xaml.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Web.Extensions.dll') | ForEach-Object {'/reference:'+(Join-Path $frameworkRoot $_)}
+$references=@('System.dll','System.Core.dll','System.Xaml.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Web.Extensions.dll','System.Web.dll','System.Net.Http.dll','System.Security.dll') | ForEach-Object {'/reference:'+(Join-Path $frameworkRoot $_)}
 $references+=@('WindowsBase.dll','PresentationCore.dll','PresentationFramework.dll') | ForEach-Object {'/reference:'+(Join-Path $wpfRoot $_)}
 $references+=@('Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.Wpf.dll') | ForEach-Object {'/reference:'+(Join-Path $sdkRoot ('lib\net462\'+$_))}
 $sources=Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'webview') -Filter '*.cs' | ForEach-Object {$_.FullName}

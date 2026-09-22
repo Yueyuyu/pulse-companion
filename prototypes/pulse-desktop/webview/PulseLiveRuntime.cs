@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Diagnostics;
+using System.Linq;
 using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Threading;
@@ -18,8 +19,10 @@ namespace CodexCompanion.PulseWebPreview {
     readonly bool verification;
     readonly bool background;
     readonly PulseAppearanceSettings appearance;
+    readonly PulseAccountService accounts;
     internal readonly PulseLiveModel Model;
     AppServerClient client;
+    HashSet<string> openApplications=new HashSet<string>();
     DateTime connectedAt,lastQuotaRequest;
     bool disposed,ready;
     internal int TaskUpdates {get;private set;}
@@ -27,16 +30,17 @@ namespace CodexCompanion.PulseWebPreview {
       widget=window;verification=verify;
       background=runInBackground;
       appearance=verify?new PulseAppearanceSettings():PulseAppearanceSettings.Load(PulseAppearanceSettings.FilePath);
+      accounts=new PulseAccountService(!verify);accounts.Changed+=Publish;
       Model=new PulseLiveModel(verify?TaskLightSettings.CreateTransient():TaskLightSettings.Load());
       preferences=verify?new PulseWindowSettings():PulseWindowSettings.Load();
       notifier=new TaskLightNotifier(verify?(Action<TaskToastKind,TaskSnapshot>)delegate {}:null);
       notifier.TaskActivated+=delegate(object sender,TaskActivatedEventArgs e){OpenTask(e.Task);};
-      widget.Title="Pulse Companion · Codex 实时状态";widget.Topmost=Model.AlwaysOnTop;
+      widget.Title="Pulse Companion · 应用状态";widget.Topmost=Model.AlwaysOnTop;
       widget.Ready+=Start;
       widget.Command+=Command;
       widget.PlacementChanged+=SavePlacement;
       widget.Failed+=delegate {Model.Disconnect();Model.Notice="桌面呈现连接异常，请从托盘刷新或重新启动";};
-      tray=new Forms.NotifyIcon {Icon=System.Drawing.SystemIcons.Application,Text="Pulse Companion · Codex 实时状态",Visible=!verify};
+      tray=new Forms.NotifyIcon {Icon=System.Drawing.SystemIcons.Application,Text="Pulse Companion · 应用状态",Visible=!verify};
       var menu=new Forms.ContextMenuStrip();
       menu.Items.Add("展开 Pulse Companion",null,delegate {ShowFromTray();});
       menu.Items.Add("立即刷新",null,delegate {Refresh();});
@@ -60,7 +64,7 @@ namespace CodexCompanion.PulseWebPreview {
       if(preferences.HasPosition)widget.RestorePosition(preferences.Side=="right"?preferences.Right-widget.Width:preferences.Left,preferences.Top);
       widget.Send("side",preferences.Side);widget.Send("scale",preferences.Scale);
       widget.Send("pinned",preferences.Pinned);widget.Send("mode",preferences.Mode);
-      Publish();timer.Start();Tick(null,EventArgs.Empty);
+      timer.Start();Tick(null,EventArgs.Empty);
     }
     void Dispatch(object sender,Action action) {
       if(disposed||sender!=client)return;
@@ -76,8 +80,11 @@ namespace CodexCompanion.PulseWebPreview {
     }
     void Tick(object sender,EventArgs e) {
       if(disposed||!ready)return;
-      bool running=CodexWindowTracker.IsCodexDesktopRunning();
-      ApplyPresence(running);
+      openApplications=new HashSet<string>(verification?(CodexWindowTracker.IsCodexDesktopRunning()?new[]{"codex"}:new string[0]):PulseApplicationPresence.Read());
+      accounts.SetOpenApplications(openApplications);
+      bool running=openApplications.Contains("codex");
+      ApplyPresence(openApplications.Count>0);
+      accounts.Tick();
       if(!running) {StopClient();Model.Disconnect();Publish();return;}
       if(client==null) {
         Model.QuotaState=Model.TasksState="loading";
@@ -108,6 +115,13 @@ namespace CodexCompanion.PulseWebPreview {
       var type=Convert.ToString(message["type"]);
       if(type!="pin") {
         object appId;if(!message.TryGetValue("applicationId",out appId)||!(appId is string)||!PulseBackgroundPolicy.AcceptsApplication((string)appId))return;
+        if(!openApplications.Contains((string)appId))return;
+      }
+      if(type!="pin"&&(string)message["applicationId"]!="codex") {
+        string applicationId=(string)message["applicationId"];
+        if(type=="icon-mode") {object value;if(message.TryGetValue("value",out value)&&value is string)SetIcon(applicationId,(string)value);}
+        else accounts.Command(applicationId,type);
+        return;
       }
       if(type=="refresh")Refresh();
       else if(type=="watch") {
@@ -138,7 +152,7 @@ namespace CodexCompanion.PulseWebPreview {
       preferences.Mode=widget.Mode;preferences.Side=widget.Side;preferences.Scale=widget.RenderScale;
       if(!preferences.Save()) {Model.Notice="窗口位置保存失败";Publish();}
     }
-    void ShowFromTray() {if(CodexWindowTracker.IsCodexDesktopRunning()){widget.Show();widget.Send("mode","expanded");}else tray.ShowBalloonTip(3000,"Pulse Companion 后台运行中","打开 Codex 后会自动显示桌面浮条。",Forms.ToolTipIcon.Info);}
+    void ShowFromTray() {Tick(null,EventArgs.Empty);if(openApplications.Count>0){widget.Show();widget.Send("mode","expanded");}else tray.ShowBalloonTip(3000,"Pulse Companion 后台运行中","打开已登记的 AI 应用后会自动显示桌面浮条。",Forms.ToolTipIcon.Info);}
     internal void ApplyPresence(bool running) {
       bool visible=PulseBackgroundPolicy.ShouldShow(background,running);
       if(visible&&!widget.IsVisible)widget.Show();else if(!visible&&widget.IsVisible)widget.Hide();
@@ -152,15 +166,17 @@ namespace CodexCompanion.PulseWebPreview {
     internal void Publish() {
       if(!ready||disposed)return;
       var state=Model.Snapshot();
-      widget.Send("snapshot",new {schemaVersion=2,source="companion-live",sequence=state.sequence,applications=new[]{new {id="codex",iconMode=appearance.Get("codex"),state=state}}});
+      var applications=new List<object>();if(openApplications.Contains("codex"))applications.Add(new {id="codex",iconMode=appearance.Get("codex"),state=state});
+      if(!verification)applications.AddRange(accounts.Snapshots(appearance));
+      widget.Send("snapshot",new {schemaVersion=2,source="companion-live",sequence=state.sequence,applications=applications.ToArray()});
       if(!verification) {
         // 仅运维元数据；不记录账户响应、任务标题或凭据。
-        try {File.WriteAllText(Path.Combine(Path.GetDirectoryName(PulseWindowSettings.FilePath),"pulse-runtime.json"),new JavaScriptSerializer().Serialize(new {pid=Process.GetCurrentProcess().Id,updatedAtUtc=DateTime.UtcNow.ToString("o"),background=background,visible=widget.IsVisible,showInTaskbar=widget.ShowInTaskbar,quotaState=state.quotaState,tasksState=state.tasksState,applications=new[]{"codex"},iconMode=appearance.Get("codex")}));} catch { }
+        try {File.WriteAllText(Path.Combine(Path.GetDirectoryName(PulseWindowSettings.FilePath),"pulse-runtime.json"),new JavaScriptSerializer().Serialize(new {pid=Process.GetCurrentProcess().Id,updatedAtUtc=DateTime.UtcNow.ToString("o"),background=background,visible=widget.IsVisible,showInTaskbar=widget.ShowInTaskbar,quotaState=state.quotaState,tasksState=state.tasksState,applications=PulseApplications.Ids.Where(openApplications.Contains).ToArray(),iconMode=appearance.Get("codex")}));} catch { }
       }
     }
     void StopClient() {var old=client;client=null;if(old!=null)old.Dispose();notifier.Reset();}
     public void Dispose() {
-      if(disposed)return;disposed=true;timer.Stop();StopClient();notifier.Dispose();tray.Visible=false;tray.Dispose();
+      if(disposed)return;disposed=true;timer.Stop();accounts.Changed-=Publish;accounts.Dispose();StopClient();notifier.Dispose();tray.Visible=false;tray.Dispose();
       widget.Command-=Command;widget.Ready-=Start;widget.PlacementChanged-=SavePlacement;
     }
   }

@@ -22,10 +22,14 @@ Codex Desktop 存在检测 ──> 后台宿主显示 / 隐藏
 - `PulseLiveRuntime` 协调连接、后台显隐、托盘、发布快照和命令；任务每 2 秒刷新，额度每 60 秒主动刷新。
 - `PulseLiveModel` 复用 `QuotaParser`、`TaskParser`、`WatchedTaskCollection` 与原持久化；不把估计进度当真实完成百分比。
 - 外层 schema v2 包含 `source: companion-live`、`sequence`、`applications`；每项包含 `id`、`iconMode` 和原 schema v1 状态快照。
-- 宿主和 renderer 当前只接受 `codex` 真实适配器；应用命令校验 applicationId。Cursor 仅是 Lab 示例，不读取其账号。
+- 宿主和 renderer 接受八项固定应用白名单；Codex 保留完整任务适配。账户模块负责 Cursor / Claude / Grok Bot 的自动桌面额度发现与手动备用网页登录，其余四项明确 unsupported，所有新应用的任务能力仍未接通。`PulseDesktopAccounts` 的临时凭据只服务本次请求，`PulseDesktopStorage` 用系统只读 SQLite / DPAPI / CNG，不依赖 Node 运行时；`PulseAccountService` 拥有来源选择、停止/恢复与白名单 DTO。详情见 [账户授权](account-authorization.md)。
 - `--live --background` 使用 `Local\CodexQuotaOverlay.SingleInstance`，与旧实时版互斥，避免重复通知和设置竞争。示例/隔离验证不占用该实时锁。
 
-伴侣与 Codex 分属独立进程和目录，不挂钩或注入 Codex，不写其安装、账户、配置与会话，不创建任务或发送模型请求。后台每 2 秒检测 Codex 存在；退出时停止只读客户端并隐藏窗口，托盘仍驻留。手动退出托盘后不会自行复活，需下次登录或运行 `start.ps1`。
+伴侣与 Codex 分属独立进程和目录，不挂钩或注入 Codex，不写其安装、账户、配置与会话，不创建任务或发送模型请求。`PulseApplicationPresence` 每 2 秒按应用检测当前会话中的桌面窗口：最小化仍显示，仅后台/托盘进程不显示；Codex 保留桌面身份检查，排除 CLI。只向 WebView 发送已打开应用，全部关闭后隐藏整个浮条。关闭应用停止新额度查询，保留授权/偏好；重开刷新但保持 429 冷却。已发出的授权/令牌轮换允许完成，不丢弃服务端已经轮换的凭据。应用打开不代表任务执行。
+
+`scripts/pulse-background-task.ps1` 管理当前用户的 `\Pulse Companion` 计划任务：登录触发、每分钟恢复触发、运行中忽略重复触发、无限运行时长，不保存密码、不提权。通过 Task Scheduler 启动独立于 Codex 子进程链；正常参数固定为 `--live --background`。按 Source 标记、当前用户 SID、安装目录和参数验证归属，拒绝覆盖未知同名任务。Windows 会改写任务 URI，并将 SID 规范化为账户名，校验不得直接依赖它们的原始文本。
+
+托盘“退出并暂停自动恢复”或 `stop.ps1` 先写暂停标记；后台在创建窗口前检查标记，暂停期间的登录/周期触发均直接退出。`start.ps1` 或重新安装清除标记；不会因重新打开 Codex 擅自取消用户暂停。卸载和旧版回退先移除自有任务。
 
 ## 本机路径与兼容标识
 
@@ -38,11 +42,13 @@ Codex Desktop 存在检测 ──> 后台宿主显示 / 隐藏
 | `%LOCALAPPDATA%\CodexDesktopCompanion\app` | 保留的 `CodexQuotaOverlay.exe` / `CodexQuotaProbe.exe` 旧版 |
 | `%LOCALAPPDATA%\CodexDesktopCompanion\install.json` | 旧版安装元数据 |
 | `%LOCALAPPDATA%\CodexDesktopCompanion\startup-before-pulse.lnk` | 首次迁移时备份的启动项，回退前校验目标 |
-| Startup 中的 `Codex Desktop Companion.lnk` | 沿用文件名，当前指向活动 Pulse 部署，参数为 `--live --background` |
+| 当前用户计划任务 `\Pulse Companion` | 当前唯一后台启动/恢复入口，指向活动部署，参数 `--live --background` |
+| Startup 中的 `Codex Desktop Companion.lnk` | 新安装迁移后移除，文件名仅用于旧版兼容/回退 |
 | `%LOCALAPPDATA%\CodexQuotaOverlay\task-light.json` | 关注任务与置顶；保留旧版位置兼容 |
 | 同目录 `pulse-window.json` | Pulse 位置、固定、贴边和缩放 |
 | 同目录 `pulse-applications.json` | 按应用图标偏好；原子写入，损坏不覆盖，失败回滚 |
 | 同目录 `pulse-runtime.json` | PID、连接和显隐等运维心跳，不含任务标题或凭据 |
+| 同目录 `pulse-background.pause` | 主动暂停标记；跨登录保留，显式 `start.ps1` 清除 |
 | `%LOCALAPPDATA%\CodexCompanionPulsePreview\WebView2` | 独立 WebView profile，不复用 Codex 的浏览器 profile |
 
 对外产品名称为 **Pulse Companion**。EXE、namespace、虚拟资源域名、Mutex、安装/设置目录和启动快捷方式文件名保留兼容标识，不做全局替换。改这些标识需要单独迁移方案和回退验证；GitHub 仓库及本地源码目录已改为 `pulse-companion`，不影响独立部署副本。
@@ -68,10 +74,11 @@ Pulse 原图标、64px 黑色侧轨、配色和动作由 Lab 共享 renderer 提
 
 ## 验证与分发边界
 
-- Lab 和宿主不带 `--live` 的模式只用示例；不能用它们证明真实账户接入。
+- Lab 和宿主显式 `--demo` 模式只用示例；无参数 EXE 默认真实后台，非法/混合参数拒绝启动。
 - `--verify` 检查 24 个示例窗口状态、抗锯齿可见像素与 OS Region、固定画布；不是全部物理 DPI/壁纸验收。
 - `--live-self-test` 使用隔离设置；`--verify-live` 只读真实 RPC→DOM，禁止通知、跳转和真实设置修改。
-- `verify-pulse.ps1 -StrictLive` 检查已安装副本、唯一实例、Startup、心跳和额度/任务就绪，不替代视觉检查。
+- `verify-pulse.ps1 -StrictLive` 检查已安装副本、唯一实例、计划任务恢复策略、暂停状态、心跳和额度/任务就绪，不替代视觉检查。
+- `scripts/test-pulse-background.ps1` 只构造任务定义，不注册、不启动窗口；`--live-self-test` 包含启动参数和暂停标记的隔离测试。视觉验收会移动/切换测试窗口，执行前告知用户，不用于普通后台恢复检查。
 - 当前 CI 只构建共享业务和旧 WinForms 回退版，不包含需本机素材的 Pulse 构建。
 - 机器人许可未解决，带 `LOCAL-ONLY.json` 的 renderer/部署输出不能公开分发。上游及品牌许可见 Lab `systems/pulse-desktop/UPSTREAM.md`。
 

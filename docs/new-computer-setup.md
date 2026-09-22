@@ -2,6 +2,8 @@
 
 当前默认入口是 Pulse 后台浮条，旧版左下角额度胶囊与白色任务灯仅用于回退。产品名为 Pulse Companion，GitHub 仓库与本地源码目录已统一为 `pulse-companion`；安装目录与设置路径仍保留兼容名称。
 
+Cursor / Claude / Grok Bot 优先读取新电脑上对应应用的有效缓存或已有桌面登录，不默认要求重复登录。Companion 的备用网页授权使用 Windows 当前用户加密，不能靠拷贝 `.dpapi` 换机，仅需备用时重新网页登录；不要上传这些文件到 GitHub。具体能力、未接入项和安全边界见 [账户授权说明](account-authorization.md)。
+
 ## 前置条件
 
 - Windows 10/11 x64、Git、Windows PowerShell 5.1、.NET Framework 4.x；
@@ -44,7 +46,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 
 `-ExecutionPolicy Bypass` 仅影响这次 PowerShell 进程，不改变长期系统策略。
 
-安装会构建、复制到 `%LOCALAPPDATA%\CodexDesktopCompanion\pulse\<部署 ID>`、运行隔离自测、备份原启动项并设置 `--live --background`。部署之后不需要 Vite、Node.js 或源码目录保持在线。
+安装会构建、复制到 `%LOCALAPPDATA%\CodexDesktopCompanion\pulse\<部署 ID>`、运行隔离自测，备份旧 Startup 入口并迁移为当前用户 `\Pulse Companion` 计划任务，参数 `--live --background`。任务负责登录启动与每分钟意外退出恢复，不保存密码、不提权。部署之后不需要 Vite、Node.js 或源码目录保持在线。
 
 确认：
 
@@ -54,6 +56,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 - 未固定时移出自动收起，拖动后位置可恢复；
 - 正常关闭 Codex 后浮条隐藏，下次打开会显示；
 - 下一次正常登录 Windows 后自动驻留。不要为了验证强制注销或关闭用户正在执行的任务。
+
+托盘“退出并暂停自动恢复”或 `stop.ps1` 会暂停后台，暂停跨登录保留；运行 `start.ps1` 恢复。正常后台不会自动运行移动/缩放窗口的视觉验收。
 
 ## 迁移个人设置（可选）
 
@@ -73,7 +77,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 
 这些文件含个人任务信息，不应提交公开 Git。它们不含账户凭据、消息正文或完整会话。新电脑无法访问的关注任务会保留为暂不可用，可手动取消；迁移设置不会迁移 Codex 登录或对话。
 
-不要复制 `pulse-install.json`、`pulse-runtime.json`、Startup 快捷方式或 WebView profile 来代替安装：它们包含机器相关路径、部署信息或运行时状态。
+不要复制 `pulse-install.json`、`pulse-runtime.json`、`pulse-background.pause`、计划任务、Startup 快捷方式或 WebView profile 来代替安装：它们包含机器相关路径、部署信息或运行时状态。
 
 ## 后续更新与回退
 

@@ -112,7 +112,7 @@ namespace CodexCompanion.PulseWebPreview {
           else if(Mode=="docked") Send("mode","compact");
           if(PlacementChanged!=null)PlacementChanged();
         } else if(!Live && type=="demo-open" && Selected!=null) Selected("已选择示例任务；未跳转真实 Codex 对话。");
-        else if(Live && (type=="refresh"||type=="watch"||type=="open-task"||type=="pin"||type=="icon-mode") && Command!=null)Command(message);
+        else if(Live && (type=="refresh"||type=="watch"||type=="open-task"||type=="pin"||type=="icon-mode"||type=="authorize"||type=="cancel-authorization"||type=="disconnect-account"||type=="resume-auto") && Command!=null)Command(message);
       } catch(Exception error) {if(Failed!=null) Failed("预览桥接失败："+error.Message);}
     }
     Rect CurrentArea() {

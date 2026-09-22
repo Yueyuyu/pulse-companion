@@ -49,7 +49,9 @@ namespace CodexCompanion.PulseWebPreview {
         var blockedAppearance=PulseAppearanceSettings.Load(Path.Combine(appearanceBlocked,"settings.json"));
         Require(!blockedAppearance.Set("codex","brand")&&blockedAppearance.Get("codex")=="robot","图标写入失败回滚");
         Require(!PulseBackgroundPolicy.ShouldShow(true,false)&&PulseBackgroundPolicy.ShouldShow(true,true)&&PulseBackgroundPolicy.ShouldShow(false,false),"后台显隐策略");
-        Require(PulseBackgroundPolicy.AcceptsApplication("codex")&&!PulseBackgroundPolicy.AcceptsApplication("cursor"),"拒绝未接入应用命令");
+        Require(PulseBackgroundPolicy.AcceptsApplication("codex")&&PulseBackgroundPolicy.AcceptsApplication("cursor")&&!PulseBackgroundPolicy.AcceptsApplication("https://bad.test"),"应用命令白名单");
+        PulseAccountVerification.Run(root,checks);
+        PulseDesktopAccountVerification.Run(root,checks);
         checks.Add("application-appearance-isolation-restart-corrupt-rollback-background-policy");
         var model=new PulseLiveModel(TaskLightSettings.LoadFromPath(path));
         Require(model.Snapshot().remaining==null,"初始额度不能是示例值");

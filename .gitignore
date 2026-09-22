@@ -21,3 +21,5 @@ task-light.json
 pulse-window.json
 pulse-applications.json
 pulse-runtime.json
+pulse-background.pause
+*.dpapi

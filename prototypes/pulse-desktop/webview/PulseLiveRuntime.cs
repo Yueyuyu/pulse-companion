@@ -17,6 +17,7 @@ namespace CodexCompanion.PulseWebPreview {
     readonly Forms.NotifyIcon tray;
     readonly PulseTrayIcon trayArtwork;
     readonly PulseWindowSettings preferences;
+    readonly Forms.ToolStripMenuItem autoDock;
     readonly bool verification;
     readonly bool background;
     readonly PulseAppearanceSettings appearance;
@@ -48,6 +49,8 @@ namespace CodexCompanion.PulseWebPreview {
       menu.Items.Add("展开 Pulse Companion",null,delegate {ShowFromTray();});
       menu.Items.Add("立即刷新",null,delegate {Refresh();});
       menu.Items.Add("贴边收起",null,delegate {widget.Send("mode","docked");});
+      autoDock=new Forms.ToolStripMenuItem("自动贴边") {Checked=preferences.AutoDock,CheckOnClick=true};
+      autoDock.Click+=delegate {SetAutoDock(autoDock.Checked);};menu.Items.Add(autoDock);
       var icons=new Forms.ToolStripMenuItem("Codex 图标");
       icons.DropDownItems.Add("品牌图标",null,delegate {SetIcon("codex","brand");});
       icons.DropDownItems.Add("机器人",null,delegate {SetIcon("codex","robot");});menu.Items.Add(icons);
@@ -67,6 +70,7 @@ namespace CodexCompanion.PulseWebPreview {
       if(preferences.HasPosition)widget.RestorePosition(preferences.Side=="right"?preferences.Right-widget.Width:preferences.Left,preferences.Top);
       widget.Send("side",preferences.Side);widget.Send("scale",preferences.Scale);
       widget.Send("pinned",preferences.Pinned);widget.Send("mode",preferences.Mode);
+      widget.AutoDock=preferences.AutoDock;widget.Send("auto-dock",preferences.AutoDock);
       timer.Start();Tick(null,EventArgs.Empty);
     }
     void Dispatch(object sender,Action action) {
@@ -116,6 +120,7 @@ namespace CodexCompanion.PulseWebPreview {
     void Command(Dictionary<string,object> message) {
       if(disposed)return;
       var type=Convert.ToString(message["type"]);
+      if(type=="auto-dock") {object value;if(message.TryGetValue("value",out value)&&value is bool)SetAutoDock((bool)value);return;}
       if(type!="pin") {
         object appId;if(!message.TryGetValue("applicationId",out appId)||!(appId is string)||!PulseBackgroundPolicy.AcceptsApplication((string)appId))return;
         if(!openApplications.Contains((string)appId))return;
@@ -154,6 +159,13 @@ namespace CodexCompanion.PulseWebPreview {
       preferences.HasPosition=true;preferences.Left=widget.Left;preferences.Top=widget.Top;preferences.Right=widget.Left+widget.Width;
       preferences.Mode=widget.Mode;preferences.Side=widget.Side;preferences.Scale=widget.RenderScale;
       if(!preferences.Save()) {Model.Notice="窗口位置保存失败";Publish();}
+    }
+    void SetAutoDock(bool enabled) {
+      string notice="";
+      if(verification)preferences.AutoDock=enabled;
+      else notice=preferences.SetAutoDock(enabled)?"":"自动贴边保存失败，已保留原设置";
+      autoDock.Checked=preferences.AutoDock;widget.AutoDock=preferences.AutoDock;
+      widget.Send("auto-dock",preferences.AutoDock);widget.Send("window-notice",notice);Publish();
     }
     void ShowFromTray() {Tick(null,EventArgs.Empty);if(openApplications.Count>0){widget.Show();widget.Send("mode","expanded");}else tray.ShowBalloonTip(3000,"Pulse Companion 后台运行中","打开已登记的 AI 应用后会自动显示桌面浮条。",Forms.ToolTipIcon.Info);}
     internal void ApplyPresence(bool running) {

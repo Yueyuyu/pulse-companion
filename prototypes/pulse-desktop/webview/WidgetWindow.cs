@@ -23,12 +23,14 @@ namespace CodexCompanion.PulseWebPreview {
     internal readonly bool Live;
     internal string Mode="compact", Side="right";
     internal double RenderScale=1;
+    internal bool AutoDock;
     double railHeight=102,panelOffset;
     readonly string renderer;
-    bool closed, attached, initializationStarted, regionApplied;
+    bool closed, attached, initializationStarted, regionApplied, dragging;
     string panelPath;
     PointerBoundaryMonitor pointerMonitor;
     [DllImport("user32.dll")] static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd,int msg,IntPtr w,IntPtr l);
     [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr hwnd,IntPtr region,bool redraw);
     [DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int l,int t,int r,int b);
@@ -97,22 +99,24 @@ namespace CodexCompanion.PulseWebPreview {
             railHeight=nextRail;panelOffset=nextOffset;
             Mode=Convert.ToString(message["mode"]);Side=Convert.ToString(message["side"]);RenderScale=Convert.ToDouble(message["scale"]);attached=Convert.ToBoolean(message["attached"]);panelPath=Convert.ToString(message["panelPath"]);
             Width=width;Height=height;if(Side=="right")Left=right-Width;
-            if(Mode=="docked" || attached) Dock(); else Fit();
+            if(!dragging) {if(Mode=="docked" || attached) Dock(); else Fit();}
             if(regionChanged)ApplyRegion();
-            if(changed && PlacementChanged!=null)PlacementChanged();
+            if(changed && !dragging && PlacementChanged!=null)PlacementChanged();
           }
         } else if(type=="drag") {
-          // 只移动这个验证窗口，不向 Codex 或其他窗口发送输入。
-          ReleaseCapture();
-          SendMessage(new WindowInteropHelper(this).Handle,0xA1,new IntPtr(2),IntPtr.Zero);
-          var area=CurrentArea();
-          var rail=RailBounds();
-          if(Math.Abs(Left+(rail.Right+6)*RenderScale-area.Right)<28) {Send("side","right");Send("mode","docked");}
-          else if(Math.Abs(Left+(rail.Left-6)*RenderScale-area.Left)<28) {Send("side","left");Send("mode","docked");}
-          else if(Mode=="docked") Send("mode","compact");
-          if(PlacementChanged!=null)PlacementChanged();
+          if(dragging)return;
+          try {
+            // WebView 消息是异步的；快速松手后不能再进入系统移动循环。
+            if((GetAsyncKeyState(1)&0x8000)==0)return;
+            dragging=true;
+            ReleaseCapture();
+            SendMessage(new WindowInteropHelper(this).Handle,0xA1,new IntPtr(2),IntPtr.Zero);
+            FinishDrag();
+          } finally {dragging=false;Send("drag-ended",true);}
+        } else if(!Live && type=="auto-dock" && message.ContainsKey("value") && message["value"] is bool) {
+          AutoDock=(bool)message["value"];Send("auto-dock",AutoDock);
         } else if(!Live && type=="demo-open" && Selected!=null) Selected("已选择示例任务；未跳转真实 Codex 对话。");
-        else if(Live && (type=="refresh"||type=="watch"||type=="open-task"||type=="pin"||type=="icon-mode"||type=="authorize"||type=="cancel-authorization"||type=="disconnect-account"||type=="resume-auto") && Command!=null)Command(message);
+        else if(Live && (type=="refresh"||type=="watch"||type=="open-task"||type=="pin"||type=="auto-dock"||type=="icon-mode"||type=="authorize"||type=="cancel-authorization"||type=="disconnect-account"||type=="resume-auto") && Command!=null)Command(message);
       } catch(Exception error) {if(Failed!=null) Failed("预览桥接失败："+error.Message);}
     }
     Rect CurrentArea() {
@@ -128,11 +132,15 @@ namespace CodexCompanion.PulseWebPreview {
       if(String.IsNullOrEmpty(panelPath)||panelPath.Length>32000)throw new InvalidOperationException("无效的本地窗口轮廓。");
       var bounds=Geometry.Parse(panelPath).Bounds;bounds.Offset(Side=="right"?6:78,6+panelOffset);return bounds;
     }
-    Rect VisibleBounds() {var bounds=RailBounds();if(Mode=="expanded"&&!String.IsNullOrEmpty(panelPath))bounds.Union(PanelBounds());bounds.Inflate(6,6);return bounds;}
-    void Fit() {var a=CurrentArea();var b=VisibleBounds();Left=Math.Max(a.Left-b.Left*RenderScale,Math.Min(Left,a.Right-b.Right*RenderScale));FitVertical(a,b);}
-    void FitVertical(Rect area,Rect visible) {Top=Math.Max(area.Top-visible.Top*RenderScale,Math.Min(Top,area.Bottom-visible.Bottom*RenderScale));}
+    void Fit() {var position=PulseWindowPlacement.KeepReachable(new Point(Left,Top),CurrentArea(),RailBounds(),RenderScale);Left=position.X;Top=position.Y;}
+    internal void FinishDrag() {
+      var side=PulseWindowPlacement.SnapSide(AutoDock,new Point(Left,Top),CurrentArea(),RailBounds(),RenderScale);
+      Fit();
+      if(side!=null) {Send("side",side);Send("mode","docked");}
+      if(PlacementChanged!=null)PlacementChanged();
+    }
     internal void RestorePosition(double left,double top) {Left=left;Top=top;Fit();}
-    void Dock() {var a=CurrentArea();Left=Side=="right"?a.Right-Width+6*RenderScale:a.Left-6*RenderScale;FitVertical(a,VisibleBounds());}
+    void Dock() {var a=CurrentArea();Left=Side=="right"?a.Right-Width+6*RenderScale:a.Left-6*RenderScale;Fit();}
     void ApplyRegion() {
       if(!IsLoaded) return;
       var transform=PresentationSource.FromVisual(this).CompositionTarget.TransformToDevice;

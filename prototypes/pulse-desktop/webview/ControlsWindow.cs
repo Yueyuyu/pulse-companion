@@ -34,6 +34,7 @@ namespace CodexCompanion.PulseWebPreview {
         var compactBounds=new Dictionary<string,Rect>();
         await Task.Delay(1500);
         if(widget.View.UseLayoutRounding) throw new Exception("WebView 合成层的抗锯齿被布局取整禁用了。");
+        await VerifyFreePlacement();
         foreach(var side in new[]{"right","left"}) foreach(var scale in new[]{1.0,1.25,1.5,2.0}) foreach(var mode in new[]{"compact","expanded","docked"}) {
           widget.Send("side",side);widget.Send("scale",scale);widget.Send("mode",mode);await Task.Delay(750);
           var raw=await widget.Inspect();var unwrapped=widget.Json.Deserialize<string>(raw);
@@ -55,11 +56,31 @@ namespace CodexCompanion.PulseWebPreview {
           if(surface.ExcludedTransparentPixels==0) throw new Exception("透明预留画布未从桌面命中区域排除："+file);
           captures.Add(new{side=side,mode=mode,scale=scale,state=state,file=file,hostFile="host-"+file,surface=surface});
         }
-        File.WriteAllText(Path.Combine(verification,"verification.json"),widget.Json.Serialize(new{passed=true,verifiedAtUtc=DateTime.UtcNow.ToString("o"),stableHoverCanvas=true,kind="WebView2/WPF content + actual OS region pixel audit + fixed hover canvas; not OS desktop screenshot",captures=captures}));
+        widget.Send("scale",1);widget.Send("side","right");widget.Send("mode","compact");await Task.Delay(250);
+        widget.AutoDock=true;widget.FinishDrag();await Task.Delay(250);
+        if(widget.Mode!="docked"||widget.Side!="right")throw new Exception("开启自动贴边后右侧未收起。");
+        File.WriteAllText(Path.Combine(verification,"verification.json"),widget.Json.Serialize(new{passed=true,verifiedAtUtc=DateTime.UtcNow.ToString("o"),stableHoverCanvas=true,freePlacement=true,kind="WebView2/WPF content + actual OS region pixel audit + fixed hover canvas + release placement policy; not manual native mouse drag or OS desktop screenshot",captures=captures}));
         Application.Current.Shutdown(0);
       }catch(Exception error) {
         File.WriteAllText(Path.Combine(verification,"error.txt"),error.ToString());Report(error.Message);Application.Current.Shutdown(1);
       }
+    }
+    async Task VerifyFreePlacement() {
+      var origin=new Point(widget.Left,widget.Top);
+      var area=SystemParameters.WorkArea;
+      widget.AutoDock=false;
+      widget.RestorePosition(area.Left-284-20,area.Top+80);
+      var position=new Point(widget.Left,widget.Top);
+      widget.FinishDrag();await Task.Delay(120);
+      if(widget.Mode!="compact"||new Point(widget.Left,widget.Top)!=position)throw new Exception("关闭自动贴边后不能擅自吸附或禁止部分越界。");
+      widget.Send("mode","expanded");await Task.Delay(250);
+      if(new Point(widget.Left,widget.Top)!=position)throw new Exception("展开面板把侧轨推回屏幕。");
+      widget.Send("mode","compact");await Task.Delay(150);
+      if(new Point(widget.Left,widget.Top)!=position)throw new Exception("收起面板移动侧轨。");
+      widget.RestorePosition(area.Right-354,area.Top+100);
+      position=new Point(widget.Left,widget.Top);widget.FinishDrag();await Task.Delay(120);
+      if(widget.Mode!="compact"||new Point(widget.Left,widget.Top)!=position)throw new Exception("关闭自动贴边后右侧仍吸附。");
+      widget.RestorePosition(origin.X,origin.Y);
     }
   }
 }

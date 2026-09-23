@@ -17,6 +17,7 @@ namespace CodexCompanion.PulseWebPreview {
       var checks=new List<string>();
       try {
         PulseIconVerification.Run(checks);
+        PulsePlacementVerification.Run(root,checks);
         var automatic=PulseStartupOptions.Parse(new string[0]);
         Require(automatic.Live&&automatic.Background&&!automatic.SelfTest&&automatic.VisualReportPath==null,"无参数只能启动正常后台");
         var scheduled=PulseStartupOptions.Parse(new[]{"--live","--background"});

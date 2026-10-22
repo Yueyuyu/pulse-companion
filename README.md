@@ -4,7 +4,7 @@
 
 Pulse Companion（原 Codex Desktop Companion）是外置、只读的 Windows 桌面伴侣：用 Pulse 风格浮条集中显示 AI 应用的额度与任务状态，离开应用窗口后也能关注任务、接收完成提醒，并一键跳回对应对话。
 
-当前开发版本为 **`1.2.0`（尚未发布）**。历史版本 [`v1.1.0`](https://github.com/Yueyuyu/pulse-companion/releases/tag/v1.1.0) 仍是 Quiet Workspace 旧版，不包含当前 Pulse 后台界面。本仓库保存当前开发源码，不能把旧 Release 当新版安装包。配套 `ui-design-lab` 的 Pulse 源码已推送至 `main`，本次验证对应提交 [`da29de0`](https://github.com/Yueyuyu/ui-design-lab/commit/da29de0677883270750836b592e17459a7f70f2d)；本机机器人资源不在公开仓库中。
+当前开发版本为 **`1.2.0`（尚未发布）**。历史版本 [`v1.1.0`](https://github.com/Yueyuyu/pulse-companion/releases/tag/v1.1.0) 仍是 Quiet Workspace 旧版，不包含当前 Pulse 后台界面。本仓库保存当前开发源码，不能把旧 Release 当新版安装包。配套 `ui-design-lab` 的 Pulse 源码位于 `main`，2026-10-22 本机额度颜色修复验证对应提交 [`341936f`](https://github.com/Yueyuyu/ui-design-lab/commit/341936f9887b84874b881cdc93050cfcc5eab2d3)；本机机器人资源不在公开仓库中。
 
 > 对外产品名已改为 **Pulse Companion**；GitHub 仓库和本地目录已统一为 `pulse-companion`。这是独立社区项目，不是上游 [Pulse](https://github.com/qunqin24/Pulse) 或 OpenAI 的官方 Windows 版本。不会修改或注入 Codex 安装文件。
 

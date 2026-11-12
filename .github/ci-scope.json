@@ -1,0 +1,12 @@
+{
+  "rootMarkdown": true,
+  "files": [
+    "LICENSE",
+    ".github/CI.md",
+    ".github/pull_request_template.md"
+  ],
+  "markdownDirectories": [
+    "docs/"
+  ],
+  "runtimeDocuments": []
+}

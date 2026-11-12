@@ -29,6 +29,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: 核对提交内容与脚本引用
+        run: node .github/scripts/preflight.mjs check HEAD
+      - name: 提交门禁回归测试
+        run: node --test .github/scripts/preflight.checks.mjs
       - run: node --test .github/scripts/change-scope.test.mjs
       - id: scope
         run: node .github/scripts/change-scope.mjs

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "required": [
+    ".github/scripts/preflight.mjs",
+    ".github/scripts/preflight.checks.mjs",
+    ".githooks/pre-commit",
+    ".githooks/pre-push",
+    ".github/scripts/change-scope.test.mjs",
+    ".github/scripts/change-scope.mjs",
+    ".githooks/.gitattributes"
+  ],
+  "packageScripts": [],
+  "checks": [
+    [
+      "node",
+      "--test",
+      ".github/scripts/preflight.checks.mjs"
+    ],
+    [
+      "node",
+      "--test",
+      ".github/scripts/change-scope.test.mjs"
+    ]
+  ],
+  "programChecks": [
+    [
+      "powershell",
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "build.ps1"
+    ],
+    [
+      "powershell",
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "verify.ps1",
+      "-Development",
+      "-Offline"
+    ]
+  ],
+  "documentation": {
+    "rootMarkdown": true,
+    "files": [
+      "LICENSE",
+      ".github/CI.md",
+      ".github/pull_request_template.md"
+    ],
+    "markdownDirectories": [
+      "docs/"
+    ],
+    "runtimeDocuments": []
+  },
+  "generated": {},
+  "excludedWorkflows": {}
+}

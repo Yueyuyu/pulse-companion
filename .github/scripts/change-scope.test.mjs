@@ -30,6 +30,7 @@ test('PR 使用 merge-base，push 使用整个提交范围，保留含空格的�
 test('手动执行、新建分支和未知事件完整检查', () => {
  const git = () => { throw new Error('不应执行 diff'); };
  assert.equal(changedFiles('workflow_dispatch', {}, git), null);
+ assert.equal(changedFiles('push', {ref:'refs/tags/v1.1.0',before:'a'.repeat(40),after:'b'.repeat(40)}, git), null);
  assert.equal(changedFiles('push', {before:'0'.repeat(40),after:'a'.repeat(40)}, git), null);
  assert.equal(changedFiles('merge_group', {}, git), null);
  assert.equal(checkDocuments(['deleted-not-present.md']), 0);

@@ -11,6 +11,7 @@ export function classify(files, config, force = false) {
 }
 
 export function changedFiles(eventName, event, git) {
+  if (eventName === 'push' && event.ref?.startsWith('refs/tags/')) return null;
   if (eventName === 'workflow_dispatch' || eventName === 'workflow_call') return null;
   let base, head;
   if (eventName === 'pull_request') {

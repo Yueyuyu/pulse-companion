@@ -8,8 +8,9 @@ using System.Web.Script.Serialization;
 
 namespace CodexCompanion.PulseWebPreview {
   internal static class PulseApplications {
-    internal static readonly string[] Ids={"codex","cursor","claude","grok-bot","zcode","kimi","doubao-work","workbuddy"};
+    internal static readonly string[] Ids={"codex","cursor","claude","grok-bot","zcode","kimi","doubao-work","workbuddy","antigravity"};
     internal static bool CanAuthorize(string id) {return id=="cursor"||id=="claude"||id=="grok-bot";}
+    internal static bool CanRead(string id) {return CanAuthorize(id)||id=="antigravity";}
   }
 
   internal sealed class PulseCredential {
@@ -80,6 +81,7 @@ namespace CodexCompanion.PulseWebPreview {
       windows.Add(new PulseQuotaWindow{label=label,remaining=Math.Round(Math.Max(0,100-number.Value),2),resetsAt=at});
     }
     internal static PulseQuotaWindow[] Parse(string id,object data) {
+      if(id=="antigravity")return PulseAntigravity.Parse(data);
       var windows=new List<PulseQuotaWindow>();
       if(id=="cursor") {
         object reset=Get(data,"billingCycleEnd");

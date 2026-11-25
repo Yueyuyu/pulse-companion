@@ -15,6 +15,19 @@ namespace CodexCompanion.PulseWebPreview {
     static object Json(string value) {return new JavaScriptSerializer().DeserializeObject(value);}
     static PulseQuotaWindow[] Parse(string id,string value) {return PulseUsageParser.Parse(id,Json(value));}
     internal static void Run(string root,List<string> checks) {
+      Require(PulseApplicationPresence.Select(true,new[]{"ChatGPT","Antigravity","antigravity-tools"}).SequenceEqual(new[]{"codex","antigravity"}),"Antigravity 桌面单独显示，工具管理器不冒充应用");
+      var gravity=Parse("antigravity","{\"response\":{\"groups\":[{\"displayName\":\"Gemini Models\",\"buckets\":[{\"bucketId\":\"weekly\",\"window\":\"weekly\",\"remainingFraction\":0.75},{\"bucketId\":\"short\",\"window\":\"5h\",\"remainingFraction\":0}]}]}}");
+      Require(gravity.Length==2&&gravity[0].remaining==0&&gravity[1].remaining==75,"Antigravity 剩余比例不是已用比例，短周期先显示且 0 保留");
+      foreach(string bucket in new[]{"{}","{\"bucketId\":\"x\",\"window\":\"weekly\"}","{\"bucketId\":\"x\",\"window\":\"unknown\",\"remainingFraction\":1}","{\"bucketId\":\"x\",\"window\":\"weekly\",\"remainingFraction\":1.5}","{\"bucketId\":\"x\",\"window\":\"weekly\",\"remainingFraction\":-1}","{\"bucketId\":\"x\",\"window\":\"weekly\",\"remainingFraction\":1,\"resetTime\":\"invalid\"}","{\"bucketId\":\"x\",\"window\":\"weekly\",\"remainingFraction\":1,\"resetTime\":\"2000-01-01T00:00:00Z\"}"})
+        Require(Parse("antigravity","{\"response\":{\"groups\":[{\"displayName\":\"Gemini\",\"buckets\":["+bucket+"]}]}}").Length==0,"Antigravity 缺值、越界、未知周期和过期数据不可冒充健康额度");
+      Require(PulseAntigravityCli.SupportsUsage("1.1.11")&&PulseAntigravityCli.SupportsUsage("1.5.15\n")&&!PulseAntigravityCli.SupportsUsage("1.1.10")&&!PulseAntigravityCli.SupportsUsage("unknown"),"CLI 旧版不得把 /usage 发给模型");
+      var cli=PulseAntigravityCli.Parse(Json("{\"status\":\"SUCCESS\",\"command\":{\"name\":\"usage\",\"data\":{\"groups\":[{\"name\":\"Gemini\",\"buckets\":[{\"id\":\"weekly\",\"window\":\"weekly\",\"remaining_fraction\":0.1234}]}]}}}"));
+      Require(cli.Length==1&&cli[0].remaining==12.34,"CLI snake_case 与本机接口共用比例规则");
+      Require(PulseAntigravity.EnvironmentToken("UNRELATED=ignore\0ANTIGRAVITY_SERVER_CSRF_TOKEN=fixture-token-123456\0")=="fixture-token-123456"&&PulseAntigravity.EnvironmentToken("UNRELATED=ignore\0")==null,"只选择命名的临时 CSRF，不返回其他环境字段");
+      Require(PulseAntigravity.ServerPath(@"C:\Apps\Antigravity\resources\bin\language_server.exe",@"C:\Apps\Antigravity\Antigravity.exe")&&!PulseAntigravity.ServerPath(@"C:\Apps\Other\resources\bin\language_server.exe",@"C:\Apps\Antigravity\Antigravity.exe"),"语言服务必须属于当前 Antigravity 安装");
+      Require(PulseAntigravity.AllowedLocal(new Uri("http://127.0.0.1:1234"+PulseAntigravity.QuotaPath)),"只读本机额度端点");
+      foreach(string uri in new[]{"http://example.com:1234"+PulseAntigravity.QuotaPath,"http://127.0.0.1:1234/auth/mint","http://user@127.0.0.1:1234"+PulseAntigravity.QuotaPath,"http://127.0.0.1:1234"+PulseAntigravity.QuotaPath+"?forward=1"})Require(!PulseAntigravity.AllowedLocal(new Uri(uri)),"禁止其他主机、凭据创建端点与附带参数");
+      checks.Add("antigravity-presence-quota-fractions-expired-cli-version-local-endpoint-boundaries");
       Require(PulseApplicationPresence.Select(true,new[]{"ChatGPT"}).SequenceEqual(new[]{"codex"}),"只打开 Codex 只显示 Codex");
       Require(PulseApplicationPresence.Select(true,new[]{"ChatGPT","CURSOR","Cursor","WorkBuddy"}).SequenceEqual(new[]{"codex","cursor","workbuddy"}),"多应用顺序稳定、去重且名称不区分大小写");
       Require(PulseApplicationPresence.Select(false,new[]{"Codex","Cursor","Claude"}).SequenceEqual(new[]{"cursor","claude"}),"CLI 不冒充桌面应用");

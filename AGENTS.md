@@ -4,6 +4,8 @@
 
 ## 当前默认入口（2026-09-21）
 
+- 2026-11-25 Antigravity 为第九项应用：只在桌面窗口打开时显示；本机固定回环额度接口优先，官方 agy CLI `/usage` 作备用，严格检查版本 ≥1.1.11。来源与账户差异必须明确，禁止读取 Google OAuth/刷新令牌或将旧版命令发给模型；无独立网页登录，其任务/关注/通知/跳转未接入。`CanRead` 不等于 `CanAuthorize`。CI/暂存门禁可用 `-HostOnly` 编译无窗口自测，不替代完整 renderer 部署验收。
+
 - `install.ps1` 默认部署 Pulse WebView2 后台版；共享 renderer 在同级 `ui-design-lab/systems/pulse-desktop`，Windows 宿主在 `prototypes/pulse-desktop/webview/`。历史目录/EXE 名称不是“尚未接真实数据”的证据。
 - 用户已授权将 Pulse 部署到独立本机目录，并修复后台退出后不能恢复的问题。当前入口为当前用户 `\Pulse Companion` 计划任务（登录 + 每分钟恢复，`--live --background`），旧 Startup 入口备份后移除；旧程序和回退入口保留。这不代表每次文档修改都应重装。
 - 当前 Codex 已接入真实额度、任务、关注持久化、通知和跳转。Cursor / Claude / Grok Bot 优先自动读取对应桌面来源，独立网页登录仅作备用；本机来源解析通过不等于真实额度接口通过。其他四项额度和所有新应用任务能力仍未接通，不能称七项完整接入。相关开发先读 `docs/account-authorization.md`。

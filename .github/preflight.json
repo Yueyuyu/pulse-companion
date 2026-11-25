@@ -7,7 +7,8 @@
     ".githooks/pre-push",
     ".github/scripts/change-scope.test.mjs",
     ".github/scripts/change-scope.mjs",
-    ".githooks/.gitattributes"
+    ".githooks/.gitattributes",
+    "scripts/test-pulse-host.ps1"
   ],
   "packageScripts": [],
   "checks": [
@@ -23,6 +24,14 @@
     ]
   ],
   "programChecks": [
+    [
+      "powershell",
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "scripts/test-pulse-host.ps1"
+    ],
     [
       "powershell",
       "-NoProfile",

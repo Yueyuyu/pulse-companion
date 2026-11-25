@@ -15,6 +15,7 @@ namespace CodexCompanion.PulseWebPreview {
   internal static class PulseDesktopAccounts {
     internal static Task<PulseDesktopReading> None(string id,CancellationToken token) {return Task.FromResult(new PulseDesktopReading());}
     internal static Task<PulseDesktopReading> Read(string id,CancellationToken token) {
+      if(id=="antigravity")return Task.Run(()=>PulseAntigravity.Read(token),token);
       return Task.Run(()=> {
         token.ThrowIfCancellationRequested();
         string roaming=Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

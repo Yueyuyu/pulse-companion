@@ -1,7 +1,8 @@
 ﻿#requires -Version 5.1
 [CmdletBinding()]
-param([switch]$Run,[switch]$Verify,[switch]$VerifyLive,[switch]$Live,[switch]$InspectWindow,[string]$UiLabPath='')
+param([switch]$Run,[switch]$Verify,[switch]$VerifyLive,[switch]$Live,[switch]$InspectWindow,[switch]$HostOnly,[string]$UiLabPath='')
 $ErrorActionPreference='Stop'
+if($HostOnly -and ($Run -or $Verify -or $VerifyLive -or $Live -or $InspectWindow)){throw 'HostOnly only supports headless compilation and self-test.'}
 if([string]::IsNullOrWhiteSpace($UiLabPath)){$UiLabPath=Join-Path $PSScriptRoot '..\..\..\ui-design-lab'}
 $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $outputRoot=Join-Path $repoRoot 'bin\pulse-webview-preview'
@@ -13,8 +14,10 @@ if(!(Test-Path -LiteralPath (Join-Path $sdkRoot 'lib\net462\Microsoft.Web.WebVie
   Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$sdkVersion/microsoft.web.webview2.$sdkVersion.nupkg" -OutFile $archive
   Expand-Archive -LiteralPath $archive -DestinationPath $sdkRoot -Force
 }
-Push-Location -LiteralPath $UiLabPath
-try { & node scripts/build-pulse-desktop.mjs; if($LASTEXITCODE -ne 0){throw '共享界面构建失败。'} } finally {Pop-Location}
+if(-not $HostOnly){
+    Push-Location -LiteralPath $UiLabPath
+    try { & node scripts/build-pulse-desktop.mjs; if($LASTEXITCODE -ne 0){throw '共享界面构建失败。'} } finally {Pop-Location}
+}
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 $compiler='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $frameworkRoot=Split-Path -Parent $compiler
@@ -32,9 +35,11 @@ foreach($icon in @($appIcon,$trayIcon)){if(!(Test-Path -LiteralPath $icon)){thro
 if($LASTEXITCODE -ne 0){throw 'Windows WebView2 宿主编译失败。'}
 Copy-Item -Path (Join-Path $sdkRoot 'lib\net462\*.dll') -Destination $outputRoot -Force
 Copy-Item -LiteralPath (Join-Path $sdkRoot 'runtimes\win-x64\native\WebView2Loader.dll') -Destination $outputRoot -Force
-$renderer=Join-Path $outputRoot 'renderer'
-New-Item -ItemType Directory -Force -Path $renderer | Out-Null
-Copy-Item -Path (Join-Path $UiLabPath '.local-cache\pulse-desktop\*') -Destination $renderer -Recurse -Force
+if(-not $HostOnly){
+    $renderer=Join-Path $outputRoot 'renderer'
+    New-Item -ItemType Directory -Force -Path $renderer | Out-Null
+    Copy-Item -Path (Join-Path $UiLabPath '.local-cache\pulse-desktop\*') -Destination $renderer -Recurse -Force
+}
 Write-Output "已构建 Pulse Companion：$executable（仅限本机，不可公开分发；未更新已安装副本）"
 if($Verify){
   $captureRoot=Join-Path $repoRoot 'artifacts\pulse-webview'

@@ -10,7 +10,7 @@ namespace CodexCompanion.PulseWebPreview {
     static readonly Dictionary<string,string[]> ProcessNames=new Dictionary<string,string[]> {
       {"codex",new[]{"ChatGPT","Codex"}}, {"cursor",new[]{"Cursor"}}, {"claude",new[]{"Claude"}},
       {"grok-bot",new[]{"Grok Bot"}}, {"zcode",new[]{"ZCode"}}, {"kimi",new[]{"Kimi"}},
-      {"doubao-work",new[]{"DoubaoWork"}}, {"workbuddy",new[]{"WorkBuddy"}}
+      {"doubao-work",new[]{"DoubaoWork"}}, {"workbuddy",new[]{"WorkBuddy"}}, {"antigravity",new[]{"Antigravity"}}
     };
     internal static string[] Select(bool codexDesktopRunning,IEnumerable<string> windowProcessNames) {
       var names=new HashSet<string>(windowProcessNames,StringComparer.OrdinalIgnoreCase);

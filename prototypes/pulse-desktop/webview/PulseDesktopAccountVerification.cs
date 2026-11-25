@@ -48,6 +48,36 @@ namespace CodexCompanion.PulseWebPreview {
       throw new Exception("自动读取 fixture 未结束");
     }
     static async Task ServiceCases(string root) {
+      string powershell=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"WindowsPowerShell","v1.0","powershell.exe");
+      foreach(bool overflow in new[]{false,true}) {
+        bool stopped=false;var elapsed=System.Diagnostics.Stopwatch.StartNew();
+        try{await PulseAntigravityCli.Run(powershell,"-NoProfile -NonInteractive -Command \""+(overflow?"Write-Output ('x' * 10000)":"Start-Sleep -Seconds 30")+"\"",root,32,TimeSpan.FromSeconds(2),CancellationToken.None);}
+        catch(PulseAccountException error){stopped=error.Kind==(overflow?"response":"cli-unavailable");}
+        Require(stopped&&elapsed.Elapsed<TimeSpan.FromSeconds(10),"CLI 超量/超时终止自有子进程，不挂住后台");
+      }
+      using(var canceled=new CancellationTokenSource()) {
+        canceled.Cancel();bool rejected=false;
+        try{await PulseAntigravityCli.Run("must-not-start.exe","",root,32,TimeSpan.FromSeconds(2),canceled.Token);}catch(OperationCanceledException){rejected=true;}
+        Require(rejected,"停止读取后不再启动 CLI");
+      }
+      foreach(string source in new[]{"desktop-local","official-cli"}) {
+        string localDirectory=Path.Combine(root,"antigravity-"+source);int localReads=0,logins=0;
+        Func<string,CancellationToken,Task<PulseDesktopReading>> readLocal=(id,token)=>{localReads++;return Task.FromResult(new PulseDesktopReading{Source=source,ObservedAt=DateTime.UtcNow,Windows=new[]{new PulseQuotaWindow{label="Gemini 周剩余",remaining=75}}});};
+        Func<string,PulseAccountHttp,CancellationToken,Task<PulseCredential>> login=(id,http,token)=>{logins++;throw new Exception("不得为 Antigravity 发起网页登录");};
+        using(var service=new PulseAccountService(true,localDirectory,null,login,readLocal)) {
+          service.SetOpenApplications(new[]{"antigravity"});service.Tick();await WaitIdle(service);
+          string state=Snapshot(service);Require(state.Contains("\"remaining\":75")&&state.Contains(source)&&state.Contains("\"canAuthorize\":false")&&state.Contains("\"tasksState\":\"unsupported\""),"Antigravity 真实来源 DTO，不冒充任务接通");
+          service.Command("antigravity","authorize");Require(logins==0,"本机读取与网页登录能力分离");
+          service.SetOpenApplications(new string[0]);service.Command("antigravity","refresh");Require(localReads==1&&!service.Snapshots(new PulseAppearanceSettings()).Any(),"应用关闭隐藏并停止查询");
+          service.SetOpenApplications(new[]{"antigravity"});service.Tick();await WaitIdle(service);Require(localReads==2,"重开恢复读取");
+          service.Command("antigravity","disconnect-account");service.Command("antigravity","refresh");Require(localReads==2,"停止后不刷新");
+        }
+        using(var service=new PulseAccountService(true,localDirectory,null,login,readLocal)) {
+          service.SetOpenApplications(new[]{"antigravity"});service.Tick();Require(localReads==2,"Antigravity 停止持久化");
+          service.Command("antigravity","resume-auto");await WaitIdle(service);Require(localReads==3,"Antigravity 恢复自动读取");
+        }
+        Require(!Directory.GetFiles(localDirectory,"*.dpapi").Any(),"Antigravity 不保存凭据");
+      }
       string directory=Path.Combine(root,"desktop-source");int reads=0;
       var result=new PulseDesktopReading{Source="desktop-cache",ObservedAt=DateTime.UtcNow,Windows=new[]{new PulseQuotaWindow{label="周剩余",remaining=69}}};
       Func<string,CancellationToken,Task<PulseDesktopReading>> local=(id,token)=>{reads++;return Task.FromResult(result);};

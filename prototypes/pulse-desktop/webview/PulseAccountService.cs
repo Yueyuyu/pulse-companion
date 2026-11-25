@@ -27,7 +27,7 @@ namespace CodexCompanion.PulseWebPreview {
         remaining=ready?(double?)fresh[0].remaining:null,resetsAt=ready?fresh[0].resetsAt:null,
         quotaLabel=ready?fresh[0].label:"账户额度",quotaWindows=ready?fresh:new PulseQuotaWindow[0],
         quotaUpdatedAt=UpdatedAt==DateTime.MinValue?null:UpdatedAt.ToString("o"),tasks=new object[0],notice=Notice,
-        authState=AuthState,canAuthorize=PulseApplications.CanAuthorize(Id),canDisconnect=PulseApplications.CanAuthorize(Id)&&(ReadMode!="off"||Credential!=null||Corrupt),authorizationBlocked=Corrupt,
+        authState=AuthState,canAuthorize=PulseApplications.CanAuthorize(Id),canDisconnect=PulseApplications.CanRead(Id)&&(ReadMode!="off"||Credential!=null||Corrupt),authorizationBlocked=Corrupt,
         readMode=ReadMode,quotaSource=QuotaSource};
     }
   }
@@ -52,11 +52,12 @@ namespace CodexCompanion.PulseWebPreview {
       http=transport??new PulseAccountHttp();
       foreach(string id in PulseApplications.Ids.Where(value=>value!="codex")) {
         var account=new PulseAccountState(id);accounts.Add(id,account);
-        if(!PulseApplications.CanAuthorize(id)) {account.AuthState=account.QuotaState="unsupported";account.Notice="此应用的只读额度与实时任务接口尚未接通；不会使用其他产品的额度替代。";continue;}
+        if(!PulseApplications.CanRead(id)) {account.AuthState=account.QuotaState="unsupported";account.Notice="此应用的只读额度与实时任务接口尚未接通；不会使用其他产品的额度替代。";continue;}
         if(!enabled)continue;
         try {string mode=Path.Combine(this.directory,id+".mode");if(File.Exists(mode)){string saved=File.ReadAllText(mode);account.ReadMode=new[]{"auto","web","off"}.Contains(saved)?saved:"off";}}
         catch {account.ReadMode="off";account.Notice="读取偏好失败，已停止自动查询；可手动恢复。";}
-        try {account.Credential=vault.Load(id);if(account.Credential!=null){account.AuthState="connected";account.QuotaState="loading";}}
+        if(!PulseApplications.CanAuthorize(id)&&account.ReadMode=="web")account.ReadMode="off";
+        try {account.Credential=PulseApplications.CanAuthorize(id)?vault.Load(id):null;if(account.Credential!=null){account.AuthState="connected";account.QuotaState="loading";}}
         catch {account.Corrupt=true;account.QuotaState="error";account.AuthState="error";account.Notice="备用授权文件无法解密，已保留原文件；桌面自动读取仍可用。";}
         if(account.ReadMode=="off"){account.AuthState="signed-out";account.QuotaState="unavailable";account.Notice="已停止读取；恢复前不会访问应用登录状态。";}
       }
@@ -72,7 +73,7 @@ namespace CodexCompanion.PulseWebPreview {
       foreach(var account in accounts.Values)if(next.Contains(account.Id)&&!openApplications.Contains(account.Id)) {
         account.Windows=new PulseQuotaWindow[0];account.QuotaSource="none";
         if(account.QuotaState!="rate-limited")account.NextRead=DateTime.MinValue;
-        if(PulseApplications.CanAuthorize(account.Id)&&account.ReadMode!="off"&&account.QuotaState!="rate-limited")account.QuotaState="loading";
+        if(PulseApplications.CanRead(account.Id)&&account.ReadMode!="off"&&account.QuotaState!="rate-limited")account.QuotaState="loading";
       }
       // 已发出的授权/令牌刷新允许完成，避免丢弃服务端已轮换的令牌；关闭后不再发起周期查询。
       // 隐藏不是断开，不清除授权、图标或已有账户状态。
@@ -86,17 +87,17 @@ namespace CodexCompanion.PulseWebPreview {
     }
     internal void Tick() {
       if(!enabled||disposed)return;
-      foreach(var account in accounts.Values)if(openApplications.Contains(account.Id)&&PulseApplications.CanAuthorize(account.Id)&&account.ReadMode!="off"&&account.AuthState!="authorizing"&&account.Operation==null&&DateTime.UtcNow>=account.NextRead)Read(account);
+      foreach(var account in accounts.Values)if(openApplications.Contains(account.Id)&&PulseApplications.CanRead(account.Id)&&account.ReadMode!="off"&&account.AuthState!="authorizing"&&account.Operation==null&&DateTime.UtcNow>=account.NextRead)Read(account);
     }
     internal void Command(string id,string command) {
-      PulseAccountState account;if(!enabled||disposed||!accounts.TryGetValue(id,out account)||!PulseApplications.CanAuthorize(id))return;
+      PulseAccountState account;if(!enabled||disposed||!accounts.TryGetValue(id,out account)||!PulseApplications.CanRead(id))return;
       if((command=="authorize"||command=="refresh"||command=="resume-auto")&&!openApplications.Contains(id))return;
-      if(command=="authorize"&&account.Operation==null&&!account.Corrupt)Authorize(account);
+      if(command=="authorize"&&PulseApplications.CanAuthorize(id)&&account.Operation==null&&!account.Corrupt)Authorize(account);
       else if(command=="cancel-authorization"&&account.AuthState=="authorizing") {
         Cancel(account);account.AuthState=account.Credential==null?"signed-out":"connected";account.QuotaState=account.Credential==null?"signed-out":"loading";account.Notice="已取消登录，晚到的授权不会保存。";Notify();
       } else if(command=="disconnect-account") {
         Cancel(account);account.Credential=null;account.Windows=new PulseQuotaWindow[0];account.ReadMode="off";account.QuotaSource="none";
-        try {SetMode(account,"off");vault.Delete(id);account.Corrupt=false;account.AuthState="signed-out";account.QuotaState="unavailable";account.Notice="已停止自动读取并删除备用授权；不影响原应用登录，重启后仍保持停止。";}
+        try {SetMode(account,"off");if(PulseApplications.CanAuthorize(id))vault.Delete(id);account.Corrupt=false;account.AuthState="signed-out";account.QuotaState="unavailable";account.Notice=PulseApplications.CanAuthorize(id)?"已停止自动读取并删除备用授权；不影响原应用登录，重启后仍保持停止。":"已停止本机只读查询；不影响原应用，重启后仍保持停止。";}
         catch {account.Corrupt=true;account.AuthState=account.QuotaState="error";account.Notice="本机授权文件删除失败，已停止查询，请重试断开。";}
         Notify();
       } else if(command=="resume-auto") {
@@ -141,7 +142,7 @@ namespace CodexCompanion.PulseWebPreview {
         PulseDesktopReading desktop=account.ReadMode=="auto"?await desktopRead(account.Id,operation.Token):new PulseDesktopReading();
         if(!Current(account,generation,operation)||!openApplications.Contains(account.Id))return;
         PulseQuotaWindow[] windows;DateTime observed=DateTime.UtcNow;
-        if(desktop.Source=="desktop-cache") {windows=desktop.Windows;observed=desktop.ObservedAt;account.QuotaSource="desktop-cache";}
+        if(desktop.Source=="desktop-cache"||desktop.Source=="desktop-local"||desktop.Source=="official-cli") {windows=desktop.Windows;observed=desktop.ObservedAt;account.QuotaSource=desktop.Source;}
         else if(desktop.Source=="desktop-session") {
           object data;
           if(account.Id=="claude")data=await http.ReadClaudeDesktop(desktop.Organization,desktop.SessionCookie,operation.Token);
@@ -165,7 +166,7 @@ namespace CodexCompanion.PulseWebPreview {
         windows=PulseUsageParser.Parse(account.Id,data);account.QuotaSource="web-login";
         }
         account.Windows=windows;account.AuthState="connected";account.UpdatedAt=observed;account.QuotaState=windows.Length>0?"ready":"unavailable";
-        account.Notice=windows.Length==0?"此账户未返回可用的额度窗口；不代表剩余 100%，也不代表已用尽。":account.QuotaSource=="web-login"?"备用网页登录账户，可能与桌面账号不同。":"";
+        account.Notice=windows.Length==0?"此账户未返回可用的额度窗口；不代表剩余 100%，也不代表已用尽。":account.QuotaSource=="web-login"?"备用网页登录账户，可能与桌面账号不同。":account.QuotaSource=="official-cli"?"来源为官方 agy CLI 的当前登录账户；若两处登录不同，额度以 CLI 账户为准。":"";
       } catch(Exception error) {
         if(!disposed&&account.Generation==generation&&account.Operation==operation) {
           var known=error as PulseAccountException;account.Windows=new PulseQuotaWindow[0];account.QuotaState="error";
@@ -174,6 +175,9 @@ namespace CodexCompanion.PulseWebPreview {
           else if(known!=null&&known.Kind=="no-source"){account.AuthState="signed-out";account.QuotaState="unavailable";account.Notice="未找到有效桌面额度来源；请先在原应用登录。独立网页登录仅为备用方式。";}
           else if(known!=null&&known.Kind=="desktop-organization"){account.QuotaState="unavailable";account.Notice="无法确认 Claude 当前组织；请在原应用打开用量页面后重试，不会代选其他组织。";}
           else if(known!=null&&known.Kind=="local-storage"){account.QuotaState="unavailable";account.Notice="本机来源暂不可读或格式不支持，稍后重试；未改动原应用登录状态。";}
+          else if(known!=null&&known.Kind=="local-service"){account.QuotaState="unavailable";account.Notice="Antigravity 本机额度服务暂不可用；请在原应用完成登录并打开工作区后重试。不会读取 Google 密码或要求额外网页登录。";}
+          else if(known!=null&&known.Kind=="cli-version"){account.QuotaState="unavailable";account.Notice="官方 agy CLI 版本过旧或无法确认，已禁止执行用量命令以避免误发模型请求。";}
+          else if(known!=null&&known.Kind=="cli-unavailable"){account.QuotaState="unavailable";account.Notice="本机服务未返回额度，官方 agy CLI 也未能完成只读查询；请检查原应用网络与登录，稍后自动重试。";}
           else if(known!=null&&known.Kind=="rate-limit") {account.QuotaState="rate-limited";account.RetryAfter=account.NextRead=DateTime.UtcNow.AddSeconds(known.RetrySeconds);account.Notice="服务暂时限流，稍后自动重试；不会连续发送请求。";}
           else account.Notice="额度读取失败，暂不展示旧读数；稍后自动重试。";
         }

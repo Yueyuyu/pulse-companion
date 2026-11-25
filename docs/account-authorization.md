@@ -10,6 +10,7 @@
 | Cursor | 指定 `cursorAuth/accessToken` 字段，只读原 SQLite（含 WAL）；查询自己的 usage-summary。备用为官方页面 + PKCE。个人/团队 Auto 与 API 月池分别展示 | 未接入 |
 | Claude | 当前组织两分钟内非空缓存优先；否则仅复用 Claude 桌面 sessionKey/sessionKeyV3，GET 当前组织 usage。备用 profile-only OAuth；5 小时、周和模型限制分别解析 | 桌面对话、Cowork、Claude Code 任务均未接入 |
 | Grok Bot | 只读自身 sand-secrets 当前账号访问令牌，不借 Cursor 的另一个账号；查询独立 Grok Bot allowance。备用为 Cursor 官方账户体系登录 | 未接入 |
+| Antigravity | 当前用户当前会话的 Antigravity 自带语言服务，临时 CSRF 仅发至其持有的 127.0.0.1 固定额度路径；不可用时委托官方 agy CLI `/usage`，不读 Google OAuth/刷新令牌、不另行网页登录。模型与周期分项 | 未接入 |
 | ZCode | 未接入：未核实匹配桌面产品的网页登录额度协议 | 未接入：数据库状态语义与深链待验证 |
 | Kimi | 未接入：不拿 Kimi Code API key 额度替代桌面产品 | 未接入 |
 | 豆包工作 | 未接入：只读授权/额度协议待核实 | 未接入 |
@@ -18,6 +19,8 @@
 2026-09-22 本机三个桌面来源均已完成只读解析验证（只输出成功标志，不输出凭据）；Claude 现有历史 `u` 全空，不能当有效缓存。验证时三个应用都没有打开桌面窗口，尚未查询它们的真实服务端额度。后续打开已登录应用即可验收，无需默认再次登录；可能受账户类型、订阅、地区或上游协议影响。七个新应用不是“全部完整接通”。进程存在只用于显隐，不推断任务执行/完成。
 
 ## 使用
+
+Antigravity 补充：2026-11-25 已验证本机官方 agy 1.5.15 的真实额度读取。当前 Windows 语言服务未保留可读启动 CSRF，使用 CLI 备用来源。CLI 使用自己的当前登录，不能保证与桌面账户一致，详情明确说明。仅查找 `%USERPROFILE%\.local\bin\agy.exe` 与 `%USERPROFILE%\.gemini\bin\agy.exe`，不安装 CLI、不搜索任意 PATH；先执行 `--version`，仅 ≥1.1.11 才调用 `--log-file NUL -p /usage --output-format json`。旧版会误将斜杠命令当模型提示词，未知版本必须拒绝。空临时工作目录、关闭 stdin、隐藏窗口、30 秒期限和 512 KiB 输出上限；关闭应用/停止读取取消自有子进程。界面只接额度窗口，不接完整响应。停止偏好持久化；Antigravity 不写 DPAPI 凭据文件。
 
 1. 正常打开已登记的 AI 应用，浮条只显示已打开的应用。约 2 秒更新一次：关闭某应用就隐藏该项，全部关闭则隐藏整个浮条；最小化到任务栏仍算打开，仅残留后台/托盘进程不算。每页最多 3 项，下方箭头切换；原 Codex 关注和窗口设置不变。
 2. Cursor、Claude、Grok Bot 自动尝试读取，每 60 秒刷新；详情标明 **桌面有效缓存 / 桌面登录 / 备用网页账户**。读不到时显示原因，不自动弹登录网页。
@@ -42,6 +45,8 @@
 官方登录页面不意味着额度端点有稳定的官方第三方 API 承诺。当前使用以下上游已实现的私有/未承诺稳定协议，失败必须诚实降级，不放宽证书校验、不绕过登录。
 
 ## 协议来源与许可
+
+Antigravity 协议另参考 [Pulse e5b7d921](https://github.com/qunqin24/Pulse/tree/e5b7d921f21213d0d7fa3f24ee167e978fb9273f) 的 `AntigravityUsageService.swift` 与 `AntigravityCLIUsage.swift`（同为 Apache-2.0）。Windows 自有进程路径/会话/SID 校验、只读 x64 PEB 定位命名启动变量、监听 PID 校验与 CLI 子进程生命周期为本项目适配。只使用应用运行期提供的本机通道/官方 CLI；不扫描一般堆内存，不读取或直接请求 Google OAuth 后端，不调用 `/auth/mint`，不放宽证书校验；仅 HTTPS 自签名且没有可用 CLI 的环境会诚实降级。
 
 Windows 实现参考 [Pulse 固定 commit 2e17225](https://github.com/qunqin24/Pulse/tree/2e17225ece661138de9ce9c73b322c7c1b16d753)：
 

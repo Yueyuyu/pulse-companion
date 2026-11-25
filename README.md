@@ -4,7 +4,7 @@
 
 Pulse Companion（原 Codex Desktop Companion）是外置、只读的 Windows 桌面伴侣：用 Pulse 风格浮条集中显示 AI 应用的额度与任务状态，离开应用窗口后也能关注任务、接收完成提醒，并一键跳回对应对话。
 
-当前开发版本为 **`1.2.0`（尚未发布）**。历史版本 [`v1.1.0`](https://github.com/Yueyuyu/pulse-companion/releases/tag/v1.1.0) 仍是 Quiet Workspace 旧版，不包含当前 Pulse 后台界面。本仓库保存当前开发源码，不能把旧 Release 当新版安装包。配套 `ui-design-lab` 的 Pulse 源码位于 `main`，2026-10-22 本机额度颜色修复验证对应提交 [`341936f`](https://github.com/Yueyuyu/ui-design-lab/commit/341936f9887b84874b881cdc93050cfcc5eab2d3)；本机机器人资源不在公开仓库中。
+当前开发版本为 **`1.2.0`（尚未发布）**。历史版本 [`v1.1.0`](https://github.com/Yueyuyu/pulse-companion/releases/tag/v1.1.0) 仍是 Quiet Workspace 旧版，不包含当前 Pulse 后台界面。本仓库保存当前开发源码，不能把旧 Release 当新版安装包。配套 `ui-design-lab` 的 Pulse 源码位于 `main`，2026-11-25 Antigravity 多周期额度和彩色图标验证对应提交 [`051ff68`](https://github.com/Yueyuyu/ui-design-lab/commit/051ff68cabfd52b3757429b0dd13d5aa7e8e0a9e)，包含此前额度颜色修复；本机机器人资源不在公开仓库中。
 
 > 对外产品名已改为 **Pulse Companion**；GitHub 仓库和本地目录已统一为 `pulse-companion`。这是独立社区项目，不是上游 [Pulse](https://github.com/qunqin24/Pulse) 或 OpenAI 的官方 Windows 版本。不会修改或注入 Codex 安装文件。
 
@@ -19,10 +19,16 @@ Pulse Companion（原 Codex Desktop Companion）是外置、只读的 Windows �
 | 完成与待处理提醒 | 任务进入需处理或从执行中变为完成时，在屏幕右下角弹出不抢焦点的通知，点击可打开任务。当前是自绘桌面通知，失败时回退到系统托盘气泡，不是 Windows 通知中心的原生 Toast。 |
 | 点击任务跳转 | 校验任务 UUID 后通过 `codex://threads/<UUID>` 请求 Codex 打开对应对话，不创建或修改任务。 |
 | 紧凑、展开、贴边 | 整个胶囊移动超过 6px 才拖动，轻点仍打开/切换详情，拖后不误点击。详情与托盘提供「自动贴边」开关，默认关、跨重启保存；手动贴边仍可用。允许部分移出屏幕，仅保留可抓取边缘。未固定时移出约 320ms 收起；固定、置顶与贴边独立。 |
-| 按应用分项 | 仅显示正在打开的应用，关闭即隐藏该项、暂停新额度查询；最小化仍显示，仅后台残留进程不显示。约 2 秒更新，三项分页；重开保留授权和图标偏好。Codex 具备完整任务功能；Cursor / Claude / Grok Bot 已有自动读取适配；其他四项明确未接入。不把应用打开当任务执行。 |
+| 按应用分项 | 仅显示正在打开的应用，关闭即隐藏该项、暂停新额度查询；最小化仍显示，仅后台残留进程不显示。约 2 秒更新，三项分页；重开保留授权和图标偏好。Codex 具备完整任务功能；Cursor / Claude / Grok Bot / Antigravity 已有自动读取适配；其他四项明确未接入。不把应用打开当任务执行。 |
 | 自动额度 / 备用登录 | 优先本机接口或有效缓存，再只读借用该桌面应用的当前登录。Cursor 读取指定数据库字段；Claude 按当前组织选有效缓存/会话；Grok Bot 读取自身当前账户。借用令牌仅在内存使用，不刷新、不另存、不输出。独立网页登录须手动选择，自己的备用授权由 DPAPI 保存。支持停止读取（跨重启）与恢复；各产品周期分别展示。本机来源解析成功不等于真实服务端额度验收。 |
 
 新应用逐项支持范围、登录步骤、安全边界和验证情况见 [账户授权与接入矩阵](docs/account-authorization.md)。新增应用任务状态、关注、通知和跳转仍未接通，不能把新增登录等同完整应用适配。
+
+### Antigravity（2026-11-25）
+
+已加入第 9 个应用：打开 Antigravity 桌面窗口时显示独立彩色品牌图标，可切换机器人；关闭后隐藏、暂停查询，最小化保留。优先查询自带语言服务的本机只读额度接口；不可用时委托已安装的官方 `agy` CLI 执行 `/usage`，不读取 Google OAuth 凭据，不要求重复网页登录。执行前强制验证 CLI ≥ 1.1.11，防止旧版将命令当模型提示词；新进程隐藏运行、限时限量、关闭标准输入，不发送对话、不读取项目。
+
+Gemini / Claude-GPT 等模型组的 5 小时、周等额度分别显示，不求平均、不把缺值画成 100%。来源明确区分「桌面本机接口」与「官方 agy CLI」；CLI 使用它自己的当前登录，可能与桌面账户不同。支持停止/恢复与跨重启保留。**任务、关注、通知、任务跳转尚未接入 Antigravity**。本机已验证官方 CLI 1.5.15 返回真实多周期额度；不等于所有 Antigravity 版本均已验证。
 
 界面沿用 Pulse 的图标、黑色侧轨、造型、配色与动作，只做 Windows 适配；业务保留 Companion 的真实数据、关注、通知和跳转。紧凑与展开使用固定透明画布，避免开合时侧轨跳动；透明预留区域不拦截桌面点击。
 

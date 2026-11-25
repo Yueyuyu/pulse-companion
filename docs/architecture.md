@@ -22,7 +22,7 @@ Codex Desktop 存在检测 ──> 后台宿主显示 / 隐藏
 - `PulseLiveRuntime` 协调连接、后台显隐、托盘、发布快照和命令；任务每 2 秒刷新，额度每 60 秒主动刷新。
 - `PulseLiveModel` 复用 `QuotaParser`、`TaskParser`、`WatchedTaskCollection` 与原持久化；不把估计进度当真实完成百分比。
 - 外层 schema v2 包含 `source: companion-live`、`sequence`、`applications`；每项包含 `id`、`iconMode` 和原 schema v1 状态快照。
-- 宿主和 renderer 接受八项固定应用白名单；Codex 保留完整任务适配。账户模块负责 Cursor / Claude / Grok Bot 的自动桌面额度发现与手动备用网页登录，其余四项明确 unsupported，所有新应用的任务能力仍未接通。`PulseDesktopAccounts` 的临时凭据只服务本次请求，`PulseDesktopStorage` 用系统只读 SQLite / DPAPI / CNG，不依赖 Node 运行时；`PulseAccountService` 拥有来源选择、停止/恢复与白名单 DTO。详情见 [账户授权](account-authorization.md)。
+- 宿主和 renderer 接受九项固定应用白名单；Codex 保留完整任务适配。账户模块负责 Cursor / Claude / Grok Bot 的自动桌面额度发现与手动备用网页登录；Antigravity 由 `PulseAntigravity` 发现自身语言服务，只查询固定回环额度路径，不改 TLS 校验；服务不返回数据时由 `PulseAntigravityCli` 委托官方 agy `/usage`，先验证版本，限时/限量/隐藏运行，来源单独标记。其余四项明确 unsupported，所有新应用的任务能力仍未接通。`PulseDesktopAccounts` 的临时凭据只服务本次请求，`PulseDesktopStorage` 用系统只读 SQLite / DPAPI / CNG，不依赖 Node 运行时；`PulseAccountService` 拥有来源选择、停止/恢复与白名单 DTO。读取能力 `CanRead` 与备用授权能力 `CanAuthorize` 分开。详情见 [账户授权](account-authorization.md)。
 - `--live --background` 使用 `Local\CodexQuotaOverlay.SingleInstance`，与旧实时版互斥，避免重复通知和设置竞争。示例/隔离验证不占用该实时锁。
 
 伴侣与 Codex 分属独立进程和目录，不挂钩或注入 Codex，不写其安装、账户、配置与会话，不创建任务或发送模型请求。`PulseApplicationPresence` 每 2 秒按应用检测当前会话中的桌面窗口：最小化仍显示，仅后台/托盘进程不显示；Codex 保留桌面身份检查，排除 CLI。只向 WebView 发送已打开应用，全部关闭后隐藏整个浮条。关闭应用停止新额度查询，保留授权/偏好；重开刷新但保持 429 冷却。已发出的授权/令牌轮换允许完成，不丢弃服务端已经轮换的凭据。应用打开不代表任务执行。
@@ -83,7 +83,7 @@ Pulse 原图标、64px 黑色侧轨、配色和动作由 Lab 共享 renderer 提
 - `--live-self-test` 使用隔离设置；`--verify-live` 只读真实 RPC→DOM，禁止通知、跳转和真实设置修改。
 - `verify-pulse.ps1 -StrictLive` 检查已安装副本、唯一实例、计划任务恢复策略、暂停状态、心跳和额度/任务就绪，不替代视觉检查。
 - `scripts/test-pulse-background.ps1` 只构造任务定义，不注册、不启动窗口；`--live-self-test` 包含启动参数和暂停标记的隔离测试。视觉验收会移动/切换测试窗口，执行前告知用户，不用于普通后台恢复检查。
-- 当前 CI 只构建共享业务和旧 WinForms 回退版，不包含需本机素材的 Pulse 构建。
+- 当前 CI 构建共享业务、旧 WinForms 回退版，并用 `scripts/test-pulse-host.ps1` 编译 Pulse 宿主、执行无窗口隔离业务自测；不包含需本机素材的 renderer、真实账户或桌面视觉验收。仅手动入口和标签推送上传旧版二进制产物，日常推送不上传。
 - 机器人许可未解决，带 `LOCAL-ONLY.json` 的 renderer/部署输出不能公开分发。上游及品牌许可见 Lab `systems/pulse-desktop/UPSTREAM.md`。
 
 ## 更新影响

@@ -37,6 +37,7 @@ namespace CodexCompanion.PulseWebPreview {
       Task.Run(()=>ServiceCases(root)).GetAwaiter().GetResult();
       checks.Add("desktop-source-priority-no-vault-no-token-dto-stop-restart-resume");
       checks.Add("desktop-close-during-discovery-cancel-late-result-no-query-no-fallback-on-error");
+      checks.Add("antigravity-cli-child-auto-update-disabled");
     }
     sealed class Handler:HttpMessageHandler {
       internal int Calls;internal Func<HttpRequestMessage,HttpResponseMessage> Reply;
@@ -49,6 +50,13 @@ namespace CodexCompanion.PulseWebPreview {
     }
     static async Task ServiceCases(string root) {
       string powershell=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"WindowsPowerShell","v1.0","powershell.exe");
+      const string updateFlag="AGY_CLI_DISABLE_AUTO_UPDATE";
+      string previousFlag=Environment.GetEnvironmentVariable(updateFlag);
+      try {
+        Environment.SetEnvironmentVariable(updateFlag,"false");
+        string childFlag=await PulseAntigravityCli.Run(powershell,"-NoProfile -NonInteractive -Command \"Write-Output $env:AGY_CLI_DISABLE_AUTO_UPDATE\"",root,32,TimeSpan.FromSeconds(8),CancellationToken.None);
+        Require(childFlag.Trim()=="true"&&Environment.GetEnvironmentVariable(updateFlag)=="false","必须只在额度查询子进程中关闭 CLI 自动更新");
+      }finally{Environment.SetEnvironmentVariable(updateFlag,previousFlag);}
       foreach(bool overflow in new[]{false,true}) {
         bool stopped=false;var elapsed=System.Diagnostics.Stopwatch.StartNew();
         try{await PulseAntigravityCli.Run(powershell,"-NoProfile -NonInteractive -Command \""+(overflow?"Write-Output ('x' * 10000)":"Start-Sleep -Seconds 30")+"\"",root,32,TimeSpan.FromSeconds(2),CancellationToken.None);}

@@ -22,6 +22,8 @@
 
 Antigravity 补充：2026-11-25 已验证本机官方 agy 1.5.15 的真实额度读取。当前 Windows 语言服务未保留可读启动 CSRF，使用 CLI 备用来源。CLI 使用自己的当前登录，不能保证与桌面账户一致，详情明确说明。仅查找 `%USERPROFILE%\.local\bin\agy.exe` 与 `%USERPROFILE%\.gemini\bin\agy.exe`，不安装 CLI、不搜索任意 PATH；先执行 `--version`，仅 ≥1.1.11 才调用 `--log-file NUL -p /usage --output-format json`。旧版会误将斜杠命令当模型提示词，未知版本必须拒绝。空临时工作目录、关闭 stdin、隐藏窗口、30 秒期限和 512 KiB 输出上限；关闭应用/停止读取取消自有子进程。界面只接额度窗口，不接完整响应。停止偏好持久化；Antigravity 不写 DPAPI 凭据文件。
 
+Companion 只在自己启动的 `--version` 和 `/usage` 子进程中设置 [Google 官方自更新开关](https://antigravity.google/docs/cli/troubleshooting) `AGY_CLI_DISABLE_AUTO_UPDATE=true`，避免 CLI 的定时更新器另开终端。不修改系统或用户环境，不影响手动运行 agy 或桌面应用的更新。每次查询仍重新验证 CLI 版本，不缓存上一次的版本判断。
+
 1. 正常打开已登记的 AI 应用，浮条只显示已打开的应用。约 2 秒更新一次：关闭某应用就隐藏该项，全部关闭则隐藏整个浮条；最小化到任务栏仍算打开，仅残留后台/托盘进程不算。每页最多 3 项，下方箭头切换；原 Codex 关注和窗口设置不变。
 2. Cursor、Claude、Grok Bot 自动尝试读取，每 60 秒刷新；详情标明 **桌面有效缓存 / 桌面登录 / 备用网页账户**。读不到时显示原因，不自动弹登录网页。
 3. 只有需要备用方式时手动点 **备用网页登录**；固定官方入口，Claude 授权页可能显示 Claude Code 公共客户端名。5 分钟超时，可取消。授权成功后显式选择备用账户模式，可用 **改用桌面读取** 返回自动模式；不把备用账号说成原应用账号。

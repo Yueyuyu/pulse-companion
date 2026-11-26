@@ -50,6 +50,8 @@ namespace CodexCompanion.PulseWebPreview {
       cancellation.ThrowIfCancellationRequested();
       using(var deadline=CancellationTokenSource.CreateLinkedTokenSource(cancellation))
       using(var process=new Process{StartInfo=new ProcessStartInfo{FileName=binary,Arguments=arguments,WorkingDirectory=directory,UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,RedirectStandardInput=true},EnableRaisingEvents=true}) {
+        // 只限制本次只读调用。CreateNoWindow 不能阻止 CLI 的后台更新器另起终端。
+        process.StartInfo.EnvironmentVariables["AGY_CLI_DISABLE_AUTO_UPDATE"]="true";
         deadline.CancelAfter(timeout);
         var exited=new TaskCompletionSource<bool>();process.Exited+=(sender,args)=>exited.TrySetResult(true);
         cancellation.ThrowIfCancellationRequested();

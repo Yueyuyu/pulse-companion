@@ -8,6 +8,8 @@
 
 ### Pulse Companion 后台版
 
+- 修复 Antigravity 额度轮询偶尔唤起 Windows Terminal 并抢焦点：只对 Companion 的查询进程关闭 CLI 后台自更新。额度仍按原频率刷新，每次查询仍检查 CLI 版本，不影响用户正常更新 Antigravity。
+
 - 新增 Antigravity 独立条目与 Pulse 同源彩色品牌图标：打开显示、关闭隐藏；优先本机额度服务，官方 agy `/usage` 作备用，来源明确标注。CLI 最低版本检查、无窗口运行、超时/输出上限与取消保护；不读 Google OAuth 凭据。按模型/周期显示真实剩余，支持停止/恢复持久化；其任务、关注、通知和跳转仍未接入。
 
 - 修复多应用额度颜色串扰：耗尽或未知应用不再把其他应用的数字染红/染灰；同一应用各额度周期的进度条独立判色，切换详情不改变其他项。正常数字仍为白色，真实 0% 不改写。共享 renderer 修复见 [ui-design-lab 341936f](https://github.com/Yueyuyu/ui-design-lab/commit/341936f9887b84874b881cdc93050cfcc5eab2d3)，更新已有安装需重新运行 `install.ps1` / `repair.ps1`。

@@ -16,11 +16,21 @@ name="Pulse-Companion-${version}-macOS-universal.dmg"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/pulse-companion-build.XXXXXXXX")"
 mount="$tmp/mounted"
 attached=0
+detach_owned_volume() {
+  [[ "$attached" == 1 ]] || return 0
+  local attempt status
+  for attempt in {1..8}; do
+    if hdiutil detach "$mount"; then attached=0; return 0; else status=$?; fi
+    # 刚退出卷内的 AppKit 进程时，macOS 可能暂时返回 EBUSY；不强制卸载。
+    if [[ "$status" != 16 || "$attempt" == 8 ]]; then
+      echo "无法卸载本次验证卷（退出码 $status）: $mount" >&2; return "$status"
+    fi
+    sleep 1
+  done
+}
 cleanup() {
   # 若卷仍挂载，绝不递归清理挂载点，以免触及卷或 Applications 链接。
-  if [[ "$attached" == 1 ]]; then
-    if ! hdiutil detach "$mount" -quiet; then echo "卸载失败，保留临时目录: $tmp" >&2; return 1; fi
-  fi
+  if ! detach_owned_volume; then echo "卸载失败，保留临时目录: $tmp" >&2; return 1; fi
   rm -rf -- "$tmp"
 }
 trap cleanup EXIT
@@ -85,7 +95,6 @@ mounted_exe="$installed/Contents/MacOS/PulseCompanion"
 xcrun lipo "$mounted_exe" -verify_arch arm64 x86_64
 codesign --verify --strict --all-architectures "$installed"
 "$mounted_exe" --self-test
-hdiutil detach "$mount" -quiet
-attached=0
+detach_owned_volume
 cp "$tmp/package.dmg" "$dest/$name"
 shasum -a 256 "$dest/$name"

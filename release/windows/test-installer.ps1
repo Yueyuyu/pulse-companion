@@ -34,7 +34,12 @@ function Run-Quiet([string]$Program,[string]$Arguments){
 }
 function Invoke-Setup([string]$Phase) {
     $log=Join-Path $scratch ($Phase+'.log')
-    return Run-Quiet $setup ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG="'+$log+'"')
+    $code=Run-Quiet $setup ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG="'+$log+'"')
+    # 只输出自有阶段名和退出码，不上传完整 Inno 日志、账户信息或本机路径。
+    $steps=[regex]::Matches((Get-Content -Raw -LiteralPath $log),'Pulse lifecycle: (Check|Quiesce|Activate|Recover) -> (-?\d+)') |
+        ForEach-Object {$_.Groups[1].Value+'='+$_.Groups[2].Value}
+    Write-Host ("installer-phase={0} exit={1} lifecycle=[{2}]" -f $Phase,$code,($steps -join ','))
+    return $code
 }
 function Invoke-SetupDenyingActiveRecord([string]$Phase) {
     # 只拒绝在新建的 runner 测试根本身创建文件，不向子目录继承；无需生产故障开关。
@@ -92,6 +97,16 @@ try {
     $failureLog=Get-Content -Raw -LiteralPath (Join-Path $scratch 'first-activation-denied.log')
     Assert-Check ($failed -eq 30 -and $failureLog -match 'Pulse lifecycle: Check -> 0' -and $failureLog -match 'Pulse lifecycle: Activate -> 1\b') 'post-install-activation-failure-is-not-reported-as-success'
     Assert-Check (!(Test-Path -LiteralPath $manifest) -and !(Get-PulseBackgroundTask) -and (Test-Path -LiteralPath $registry) -and (Test-Path -LiteralPath (Join-Path $deploy 'unins000.exe'))) 'failed-first-activation-leaves-only-a-registered-repairable-package'
+    # 逐项核对真实 Inno 登记，而不是自行伪造一个必定能被宿主接受的登记。
+    $registeredPackage=Get-Item -LiteralPath $registry
+    foreach($field in @('Inno Setup: App Path','InstallLocation')){
+        $location=[string]$registeredPackage.GetValue($field)
+        Assert-Check ($location -and (Test-SamePath $location $deploy)) ('failed-activation-registers-canonical-'+$field)
+    }
+    $registeredCommand=[string]$registeredPackage.GetValue('UninstallString')
+    Assert-Check ($registeredCommand -match '^"([^"]+)"(?: /LOG)?$') 'failed-activation-registers-quoted-uninstaller'
+    Assert-Check (Test-SamePath $Matches[1] (Join-Path $deploy 'unins000.exe')) 'failed-activation-registers-owned-uninstaller'
+    foreach($file in $expected.files){Assert-Check (Test-Path -LiteralPath (Join-Path $deploy $file) -PathType Leaf) ('failed-activation-keeps-'+$file)}
     foreach($f in $hashes.Keys){Assert-Check ((Get-FileHash -LiteralPath $f).Hash -eq $hashes[$f]) ('preserved-on-failed-activation-'+(Split-Path -Leaf $f))}
     $installedContract=Join-Path $deploy 'install-tools/public-package.json'
     $originalContract=[IO.File]::ReadAllBytes($installedContract)

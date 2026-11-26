@@ -40,7 +40,7 @@ namespace CodexCompanion.PulseWebPreview {
           var raw=await widget.Inspect();var unwrapped=widget.Json.Deserialize<string>(raw);
           var state=widget.Json.Deserialize<Dictionary<string,object>>(unwrapped);
           if(Convert.ToString(state["mode"])!=mode || Convert.ToString(state["side"])!=side || Convert.ToDouble(state["scale"])!=scale || Convert.ToBoolean(state["overflow"])) throw new Exception("窗口布局未完成："+unwrapped);
-          if(mode!="docked" && Convert.ToString(state["source"])!="pulse-upstream") throw new Exception("未加载原版机器人："+unwrapped);
+          if(mode!="docked" && Convert.ToString(state["source"])!=(PulseDistribution.PublicBrand?"pulse-brand":"pulse-upstream")) throw new Exception("未加载本发行版的预期图标："+unwrapped);
           var key=side+"-"+scale;
           var bounds=new Rect(widget.Left,widget.Top,widget.Width,widget.Height);
           if(mode=="compact")compactBounds[key]=bounds;

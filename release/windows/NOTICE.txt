@@ -1,0 +1,19 @@
+Pulse Companion — independent Windows adaptation, not an official product of any identified provider.
+
+The Windows renderer is adapted from ui-design-lab (MIT), revision
+051ff68cabfd52b3757429b0dd13d5aa7e8e0a9e, https://github.com/Yueyuyu/ui-design-lab
+This edition selects static brand marks, omits the local animation engine and private
+desktop session readers, and requires explicit permission for supported official web/CLI quota access.
+
+Pulse presentation, panel choreography and icon: qunqin24/Pulse (Apache-2.0),
+revision 2e17225ece661138de9ce9c73b322c7c1b16d753, https://github.com/qunqin24/Pulse.
+Modified for Windows (native multi-size app/tray artwork, WebView rendering).
+Provider marks: Lobe Icons (MIT); Antigravity color artwork revision
+fa2d80fa2b8c65f053b389ad05750090f62abeff, https://github.com/lobehub/lobe-icons.
+Product names and logos belong to their owners and do not imply endorsement.
+
+React, React DOM and Scheduler are distributed under their accompanying MIT licenses.
+Microsoft Edge WebView2 SDK 1.0.4191.47: Microsoft.Web.WebView2.Core.dll,
+Microsoft.Web.WebView2.Wpf.dll, and the Windows x64 WebView2Loader.dll;
+see WebView2-LICENSE.txt and WebView2-NOTICE.txt. Evergreen Runtime is not bundled.
+Installer built with Inno Setup 6 (https://jrsoftware.org/isinfo.php).

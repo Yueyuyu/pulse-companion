@@ -81,7 +81,7 @@ namespace CodexCompanion.PulseWebPreview {
       windows.Add(new PulseQuotaWindow{label=label,remaining=Math.Round(Math.Max(0,100-number.Value),2),resetsAt=at});
     }
     internal static PulseQuotaWindow[] Parse(string id,object data) {
-      if(id=="antigravity")return PulseAntigravity.Parse(data);
+      if(id=="antigravity")return PulseAntigravityUsageParser.Parse(data);
       var windows=new List<PulseQuotaWindow>();
       if(id=="cursor") {
         object reset=Get(data,"billingCycleEnd");

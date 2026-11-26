@@ -58,8 +58,9 @@ namespace CodexCompanion.PulseWebPreview {
       if(initializationStarted)return;
       initializationStarted=true; // 后台 Hide/Show 不重复注册 WebView 事件或重置页面。
       try {
-        if(!File.Exists(Path.Combine(renderer,"LOCAL-ONLY.json"))) throw new InvalidOperationException("缺少仅限本机的资源标记。");
-        var profile=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"CodexCompanionPulsePreview","WebView2");
+        if(!PulseDistribution.RendererEligible(renderer,PulseDistribution.PublicBrand))throw new InvalidOperationException("桌面资源与此发行版不匹配，请重新安装对应版本。");
+        // 即使用户保留过本机专用版，也不从它的浏览器缓存加载旧的界面。
+        var profile=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"CodexCompanionPulsePreview",PulseDistribution.PublicBrand?"WebView2-Public":"WebView2");
         var environment=await CoreWebView2Environment.CreateAsync(null,profile,null);
         if(closed) return;
         await View.EnsureCoreWebView2Async(environment);

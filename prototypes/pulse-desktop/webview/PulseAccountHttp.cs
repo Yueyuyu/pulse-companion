@@ -27,7 +27,9 @@ namespace CodexCompanion.PulseWebPreview {
       if(uri.Host=="api2.cursor.sh"&&uri.AbsolutePath=="/auth/poll"&&method==HttpMethod.Get)return true;
       if(uri.Query!="")return false;
       return (uri.Host=="cursor.com"&&uri.AbsolutePath=="/api/usage-summary"&&method==HttpMethod.Get)||
+#if !PULSE_PUBLIC_BRAND
         (uri.Host=="claude.ai"&&System.Text.RegularExpressions.Regex.IsMatch(uri.AbsolutePath,"^/api/organizations/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/usage$")&&method==HttpMethod.Get)||
+#endif
         (uri.Host=="cursor.com"&&uri.AbsolutePath=="/api/dashboard/get-sand-usage-status"&&method==HttpMethod.Post)||
         (uri.Host=="platform.claude.com"&&uri.AbsolutePath=="/v1/oauth/token"&&method==HttpMethod.Post)||
         (uri.Host=="api.anthropic.com"&&uri.AbsolutePath=="/api/oauth/usage"&&method==HttpMethod.Get);
@@ -35,20 +37,24 @@ namespace CodexCompanion.PulseWebPreview {
     internal Task<object> Read(string endpoint,HttpMethod method,object body,string accessToken,CancellationToken cancellation) {
       return Send(endpoint,method,body,accessToken,null,cancellation);
     }
+#if !PULSE_PUBLIC_BRAND
     internal Task<object> ReadClaudeDesktop(string organization,string cookie,CancellationToken cancellation) {
       if(PulseDesktopAccounts.Organization(organization)!=organization||String.IsNullOrEmpty(cookie)||cookie.Length>32768||
         cookie.Split(new[]{"; "},StringSplitOptions.None).Any(part=>!(part.StartsWith("sessionKey=")||part.StartsWith("sessionKeyV3="))||!PulseCredential.SafeToken(part.Substring(part.IndexOf('=')+1))||part.Contains(",")||part.Contains(";")))throw new PulseAccountException("credentials");
       return Send("https://claude.ai/api/organizations/"+organization+"/usage",HttpMethod.Get,null,null,cookie,cancellation);
     }
+#endif
     async Task<object> Send(string endpoint,HttpMethod method,object body,string accessToken,string desktopCookie,CancellationToken cancellation) {
       var uri=new Uri(endpoint);
       if(!Allowed(uri,method))throw new PulseAccountException("endpoint");
       using(var request=new HttpRequestMessage(method,uri)) {
         request.Headers.Accept.ParseAdd("application/json");
+#if !PULSE_PUBLIC_BRAND
         if(desktopCookie!=null) {
           if(uri.Host!="claude.ai"||accessToken!=null||method!=HttpMethod.Get)throw new PulseAccountException("endpoint");
           request.Headers.Add("Cookie",desktopCookie);
         }
+#endif
         if(body!=null)request.Content=new StringContent(new JavaScriptSerializer().Serialize(body),Encoding.UTF8,"application/json");
         if(accessToken!=null) {
           if(!PulseCredential.SafeToken(accessToken))throw new PulseAccountException("credentials");

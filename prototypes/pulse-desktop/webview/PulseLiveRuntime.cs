@@ -31,8 +31,8 @@ namespace CodexCompanion.PulseWebPreview {
     internal PulseLiveRuntime(WidgetWindow window,bool verify=false,bool runInBackground=false) {
       widget=window;verification=verify;
       background=runInBackground;
-      appearance=verify?new PulseAppearanceSettings():PulseAppearanceSettings.Load(PulseAppearanceSettings.FilePath);
-      accounts=new PulseAccountService(!verify);accounts.Changed+=Publish;
+      appearance=PulseAppearanceSettings.ForBuild(PulseAppearanceSettings.FilePath,verify);
+      accounts=new PulseAccountService(!verify,requireConsent:PulseDistribution.PublicBrand);accounts.Changed+=Publish;
       Model=new PulseLiveModel(verify?TaskLightSettings.CreateTransient():TaskLightSettings.Load());
       preferences=verify?new PulseWindowSettings():PulseWindowSettings.Load();
       notifier=new TaskLightNotifier(verify?(Action<TaskToastKind,TaskSnapshot>)delegate {}:null);
@@ -51,9 +51,11 @@ namespace CodexCompanion.PulseWebPreview {
       menu.Items.Add("贴边收起",null,delegate {widget.Send("mode","docked");});
       autoDock=new Forms.ToolStripMenuItem("自动贴边") {Checked=preferences.AutoDock,CheckOnClick=true};
       autoDock.Click+=delegate {SetAutoDock(autoDock.Checked);};menu.Items.Add(autoDock);
-      var icons=new Forms.ToolStripMenuItem("Codex 图标");
-      icons.DropDownItems.Add("品牌图标",null,delegate {SetIcon("codex","brand");});
-      icons.DropDownItems.Add("机器人",null,delegate {SetIcon("codex","robot");});menu.Items.Add(icons);
+      if(!PulseDistribution.PublicBrand) {
+        var icons=new Forms.ToolStripMenuItem("Codex 图标");
+        icons.DropDownItems.Add("品牌图标",null,delegate {SetIcon("codex","brand");});
+        icons.DropDownItems.Add("机器人",null,delegate {SetIcon("codex","robot");});menu.Items.Add(icons);
+      }
       var topmost=new Forms.ToolStripMenuItem("始终置顶") {Checked=Model.AlwaysOnTop,CheckOnClick=true};
       topmost.Click+=delegate {if(Model.SetAlwaysOnTop(topmost.Checked))widget.Topmost=topmost.Checked;else topmost.Checked=Model.AlwaysOnTop;Publish();};menu.Items.Add(topmost);
       menu.Items.Add("退出并暂停自动恢复",null,delegate {
@@ -174,7 +176,7 @@ namespace CodexCompanion.PulseWebPreview {
       widget.Opacity=1;
     }
     void SetIcon(string id,string mode) {
-      if(!PulseBackgroundPolicy.AcceptsApplication(id)||!PulseAppearanceSettings.ValidMode(mode))return;
+      if(PulseDistribution.PublicBrand||!PulseBackgroundPolicy.AcceptsApplication(id)||!PulseAppearanceSettings.ValidMode(mode))return;
       if(verification)return;
       Model.Notice=appearance.Set(id,mode)?"":"图标选择保存失败，请重试；原设置未更改";Publish();
     }

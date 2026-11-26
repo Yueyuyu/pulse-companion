@@ -91,37 +91,7 @@ namespace CodexCompanion.PulseWebPreview {
       // 部分 Windows 实例的启动环境已无 CSRF。委托官方 CLI，不从堆内存找密钥。
       return await PulseAntigravityCli.Read(cancellation);
     }
-    internal static PulseQuotaWindow[] Parse(object data) {
-      var groups=PulseUsageParser.Get(PulseUsageParser.Get(data,"response"),"groups") as object[];
-      var result=new List<PulseQuotaWindow>();
-      foreach(var group in groups??new object[0]) {
-        string name=PulseUsageParser.Text(group,"displayName");
-        if(String.IsNullOrWhiteSpace(name)||name.Any(Char.IsControl))continue;
-        name=Regex.Replace(name.Trim()," Models$","",RegexOptions.IgnoreCase);
-        name=name.Substring(0,Math.Min(name.Length,32));
-        var buckets=PulseUsageParser.Get(group,"buckets") as object[];
-        foreach(var bucket in (buckets??new object[0]).OrderBy(value=>WindowSeconds(PulseUsageParser.Text(value,"window")))) {
-          string window=PulseUsageParser.Text(bucket,"window");int seconds=WindowSeconds(window);
-          if(seconds==0||String.IsNullOrEmpty(PulseUsageParser.Text(bucket,"bucketId")))continue;
-          object raw=PulseUsageParser.Get(bucket,"remainingFraction");
-          if(!(raw is double||raw is decimal||raw is int||raw is long))continue;
-          double fraction=Convert.ToDouble(raw);
-          if(Double.IsNaN(fraction)||Double.IsInfinity(fraction)||fraction<0||fraction>1)continue;
-          string reset=PulseUsageParser.Text(bucket,"resetTime");DateTimeOffset at;
-          if(PulseUsageParser.Get(bucket,"resetTime")!=null&&(reset==null||!DateTimeOffset.TryParse(reset,System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.AssumeUniversal,out at)))continue;
-          if(reset!=null) {at=DateTimeOffset.Parse(reset,System.Globalization.CultureInfo.InvariantCulture);if(at<=DateTimeOffset.UtcNow)continue;reset=at.ToUniversalTime().ToString("o");}
-          string label=seconds==604800?"周":seconds==86400?"每日":seconds==2592000?"月":seconds%86400==0?(seconds/86400)+" 天":(seconds/3600)+" 小时";
-          result.Add(new PulseQuotaWindow{label=name+" · "+label+"剩余",remaining=Math.Round(fraction*100,2),resetsAt=reset});
-        }
-      }
-      return result.Take(8).ToArray();
-    }
-    static int WindowSeconds(string value) {
-      if(value==null)return 0;value=value.ToLowerInvariant();
-      if(value=="weekly")return 604800;if(value=="daily")return 86400;if(value=="monthly")return 2592000;
-      var match=Regex.Match(value,"^([1-9][0-9]{0,3})([hd])$");
-      return match.Success?Int32.Parse(match.Groups[1].Value)*(match.Groups[2].Value=="h"?3600:86400):0;
-    }
+    internal static PulseQuotaWindow[] Parse(object data) {return PulseAntigravityUsageParser.Parse(data);}
     static bool SameUser(IntPtr process) {
       IntPtr token;if(!OpenProcessToken(process,8,out token))return false;
       try{using(var identity=new WindowsIdentity(token))using(var current=WindowsIdentity.GetCurrent())return identity.User.Equals(current.User);}

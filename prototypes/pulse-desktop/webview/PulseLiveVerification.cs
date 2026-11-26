@@ -38,7 +38,51 @@ namespace CodexCompanion.PulseWebPreview {
         Require(!PulseBackgroundPause.TryPause(Path.Combine(blockedPause,"pause")),"暂停写入失败不得报告成功");
         checks.Add("startup-default-background-explicit-demo-verification-pause");
         string path=Path.Combine(root,"task-light.json");
+        string rendererFixture=Path.Combine(root,"renderer-contract");Directory.CreateDirectory(rendererFixture);
+        Require(!PulseDistribution.RendererEligible(rendererFixture,false)&&!PulseDistribution.RendererEligible(rendererFixture,true),"空目录不允许作为任一发行版资源");
+        string localMarker=Path.Combine(rendererFixture,"LOCAL-ONLY.json");
+        File.WriteAllText(localMarker,"fixture");
+        Require(PulseDistribution.RendererEligible(rendererFixture,false)&&!PulseDistribution.RendererEligible(rendererFixture,true),"本机标记不能授权公开宿主加载");
+        File.Delete(localMarker);
+        checks.Add("private-renderer-requires-its-own-marker");
+        if(PulseDistribution.PublicBrand){
+          string actual=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"renderer");
+          Require(PulseDistribution.RendererEligible(actual,true)&&!PulseDistribution.RendererEligible(actual,false),"实际公开资源必须通过生产启动的正向校验，私有宿主仍拒绝");
+          Directory.CreateDirectory(Path.Combine(rendererFixture,"assets"));
+          foreach(string name in new[]{"index.html","PUBLIC-BRAND.json"})File.Copy(Path.Combine(actual,name),Path.Combine(rendererFixture,name));
+          foreach(string file in Directory.GetFiles(Path.Combine(actual,"assets")))File.Copy(file,Path.Combine(rendererFixture,"assets",Path.GetFileName(file)));
+          File.WriteAllText(localMarker,"fixture");
+          Require(!PulseDistribution.RendererEligible(rendererFixture,true)&&!PulseDistribution.RendererEligible(rendererFixture,false),"混合标记不能加载");
+          File.Delete(localMarker);File.AppendAllText(Path.Combine(rendererFixture,"index.html"),"altered fixture");
+          Require(!PulseDistribution.RendererEligible(rendererFixture,true),"改写后的公开文件不能与内嵌清单通过配对");
+          checks.Add("paired-public-renderer-production-eligibility");
+        }
         var appearancePath=Path.Combine(root,"appearance.json");
+        if(PulseDistribution.PublicBrand) {
+          File.WriteAllText(appearancePath,"{\"Version\":1,\"Applications\":{\"codex\":\"robot\"}}");
+          string before=File.ReadAllText(appearancePath);
+          var publicAppearance=PulseAppearanceSettings.ForBuild(appearancePath,false);
+          Require(publicAppearance.Get("codex")=="brand"&&publicAppearance.Get("cursor")=="brand"&&!publicAppearance.Set("codex","robot")&&!publicAppearance.Set("codex","brand")&&before==File.ReadAllText(appearancePath),"公开版不使用或重写原图标偏好");
+          File.Delete(appearancePath);
+          string publicAccounts=Path.Combine(root,"public-opt-in");
+          int reads=0;
+          using(var optIn=new PulseAccountService(true,publicAccounts,desktopRead:delegate {reads++;return Task.FromResult(new PulseDesktopReading());},requireConsent:true)) {
+            optIn.SetOpenApplications(new[]{"cursor","claude","grok-bot","antigravity"});
+            optIn.Tick();optIn.Command("cursor","refresh");
+            var states=optIn.Snapshots(publicAppearance).Select(value=>new JavaScriptSerializer().Serialize(value)).ToArray();
+            Require(reads==0&&states.Length==4&&states.All(value=>value.Contains("\"readMode\":\"off\"")),"第三方额度未同意前必须全部关闭");
+            optIn.Command("cursor","resume-auto");
+            Require(reads==0&&!File.Exists(Path.Combine(publicAccounts,"cursor.mode")),"仅网页登录的产品拒绝桌面读取命令");
+            optIn.Command("antigravity","resume-auto");
+            Require(reads==1&&File.ReadAllText(Path.Combine(publicAccounts,"antigravity.mode"))=="auto","只有明确允许的 CLI 才调用隔离模拟来源");
+            optIn.Command("antigravity","disconnect-account");
+          }
+          using(var restarted=new PulseAccountService(true,publicAccounts,desktopRead:delegate {reads++;return Task.FromResult(new PulseDesktopReading());},requireConsent:true)) {
+            restarted.SetOpenApplications(new[]{"antigravity","cursor","claude"});restarted.Tick();
+            Require(reads==1&&File.ReadAllText(Path.Combine(publicAccounts,"antigravity.mode"))=="off","停止在重启后保留且不触发新的查询");
+          }
+          checks.Add("public-brand-only-private-preferences-unchanged-and-third-party-opt-in");
+        }
         var appearance=PulseAppearanceSettings.Load(appearancePath);
         Require(appearance.Get("codex")=="robot","兼容原 Codex 机器人默认值");
         Require(appearance.Set("codex","brand")&&appearance.Set("test-app","robot"),"独立图标选择保存");
@@ -52,8 +96,12 @@ namespace CodexCompanion.PulseWebPreview {
         Require(!blockedAppearance.Set("codex","brand")&&blockedAppearance.Get("codex")=="robot","图标写入失败回滚");
         Require(!PulseBackgroundPolicy.ShouldShow(true,false)&&PulseBackgroundPolicy.ShouldShow(true,true)&&PulseBackgroundPolicy.ShouldShow(false,false),"后台显隐策略");
         Require(PulseBackgroundPolicy.AcceptsApplication("codex")&&PulseBackgroundPolicy.AcceptsApplication("cursor")&&!PulseBackgroundPolicy.AcceptsApplication("https://bad.test"),"应用命令白名单");
-        PulseAccountVerification.Run(root,checks);
-        PulseDesktopAccountVerification.Run(root,checks);
+#if PULSE_PUBLIC_BRAND
+        PulsePublicQuotaSource.VerifyDistribution();
+        checks.Add("public-binary-official-sources-only-no-private-readers");
+#else
+        PulseAccountVerification.Run(root,checks);PulseDesktopAccountVerification.Run(root,checks);
+#endif
         checks.Add("application-appearance-isolation-restart-corrupt-rollback-background-policy");
         var model=new PulseLiveModel(TaskLightSettings.LoadFromPath(path));
         Require(model.Snapshot().remaining==null,"初始额度不能是示例值");

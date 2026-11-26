@@ -1,6 +1,6 @@
 # Pulse Companion 新电脑恢复指南
 
-当前默认入口是 Pulse 后台浮条，旧版左下角额度胶囊与白色任务灯仅用于回退。产品名为 Pulse Companion，GitHub 仓库与本地源码目录已统一为 `pulse-companion`；安装目录与设置路径仍保留兼容名称。
+本文是 **Windows 从源码恢复本机专用机器人版** 的说明。不需要机器人或开发环境的用户请看[公开品牌版 EXE / DMG 安装指南](install.md)。旧版左下角额度胶囊与白色任务灯仅用于回退。GitHub 仓库与本地源码目录均为 `pulse-companion`；安装目录与设置路径仍保留兼容名称。
 
 Cursor / Claude / Grok Bot 优先读取新电脑上对应应用的有效缓存或已有桌面登录，不默认要求重复登录。Companion 的备用网页授权使用 Windows 当前用户加密，不能靠拷贝 `.dpapi` 换机，仅需备用时重新网页登录；不要上传这些文件到 GitHub。具体能力、未接入项和安全边界见 [账户授权说明](account-authorization.md)。
 
@@ -10,7 +10,7 @@ Cursor / Claude / Grok Bot 优先读取新电脑上对应应用的有效缓存�
 - 已安装 Microsoft Edge WebView2 Evergreen Runtime；
 - Node.js 和 npm，版本满足配套 `ui-design-lab` 依赖要求，建议使用受支持的 LTS；
 - Codex Desktop 已安装；读取真实额度、任务时需已打开并登录；
-- 两个仓库均需包含配套的 Pulse 代码；当前 `1.2.0` 尚未发布，Lab 的 Pulse 改动尚未随本次 Companion 推送，需单独取得，不能假定默认克隆已包含；
+- 两个仓库均需包含配套的 Pulse 代码；公开品牌版的 Lab 构建输入固定为 [051ff68](https://github.com/Yueyuyu/ui-design-lab/commit/051ff68cabfd52b3757429b0dd13d5aa7e8e0a9e)；
 - 合法取得并单独准备的本机机器人资源。不能从 GitHub Release 复制未获分发许可的资源，也不会由安装脚本自动下载。
 
 构建时会下载 Microsoft WebView2 SDK `1.0.4191.47`（NuGet），输出在被忽略的 `bin/`。不需要 Python 或管理员权限。**“不需要 Node.js”只适用于旧 WinForms 版，不能用于当前默认安装。**

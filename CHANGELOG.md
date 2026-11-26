@@ -4,7 +4,15 @@
 
 ## [Unreleased]
 
-当前开发版本：`1.2.0`。以下变化尚未创建发布 Tag 或 Release；GitHub 仓库与本地源码目录已统一改名为 `pulse-companion`，版本仍处于开发阶段。
+暂无其他变更。
+
+## [1.2.0-rc.1] - 2026-11-26
+
+首个同时提供 Windows Setup EXE 和本项目原生 macOS 通用 DMG 的公开预览。应用内显示的产品版本为 `1.2.0`。Windows 未做发行签名，Mac 未做 Developer ID 签名和苹果公证；本次不是稳定版。
+
+- **Windows x64**：当前 Pulse 浮条、Codex 任务、提醒及各应用额度以品牌图标版发行；不公开打包本机机器人资源。提供按用户安装的 Setup EXE。
+- **macOS 13+**：新增 Companion 自身的原生菜单栏应用，提供包含 Apple Silicon 与 Intel 两个架构的 DMG；首版支持 Codex 周额度、任务、重点关注、提醒与对话跳转。
+- 新增两端干净构建、安装包验收及 SHA-256 校验清单；[安装指南](docs/install.md)分别说明平台能力和签名限制。
 
 ### Pulse Companion 后台版
 
@@ -89,6 +97,7 @@
 - 提供一次安装、开机自启、幂等修复、卸载和严格实时验证脚本。
 - 保持与 Codex 的外置只读边界，不修改 Codex、不创建任务、不发送模型请求。
 
-[Unreleased]: https://github.com/Yueyuyu/pulse-companion/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Yueyuyu/pulse-companion/compare/v1.2.0-rc.1...HEAD
+[1.2.0-rc.1]: https://github.com/Yueyuyu/pulse-companion/releases/tag/v1.2.0-rc.1
 [1.1.0]: https://github.com/Yueyuyu/pulse-companion/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Yueyuyu/pulse-companion/releases/tag/v1.0.0

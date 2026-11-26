@@ -4,6 +4,8 @@
 
 ## 当前默认入口（2026-09-21）
 
+- Windows 的公开品牌安装包与本机专用机器人版是两条不同的构建路径。只能从 `release/windows/` 的干净、固定公共源码输入构建公开 EXE。绝不复制 `.local-cache/pulse-bot/`、带 `LOCAL-ONLY.json` 的 renderer 或现有安装目录进入 Release。公开宿主不编入第三方会话/进程内存读取实现，只使用明确授权的公开版来源。
+- macOS Companion 是 `macos/` 中的独立原生宿主；发布前必须在 macOS 构建、挂载并验证通用 DMG。不把上游 Pulse 的 DMG、Windows 二进制或单纯静态页面当 Mac 版。两端发行选择与验证见 `.github/CI.md`。
 - 2026-11-25 Antigravity 为第九项应用：只在桌面窗口打开时显示；本机固定回环额度接口优先，官方 agy CLI `/usage` 作备用，严格检查版本 ≥1.1.11。来源与账户差异必须明确，禁止读取 Google OAuth/刷新令牌或将旧版命令发给模型；无独立网页登录，其任务/关注/通知/跳转未接入。`CanRead` 不等于 `CanAuthorize`。CI/暂存门禁可用 `-HostOnly` 编译无窗口自测，不替代完整 renderer 部署验收。
 
 - `install.ps1` 默认部署 Pulse WebView2 后台版；共享 renderer 在同级 `ui-design-lab/systems/pulse-desktop`，Windows 宿主在 `prototypes/pulse-desktop/webview/`。历史目录/EXE 名称不是“尚未接真实数据”的证据。
@@ -12,7 +14,7 @@
 - 每个已接入应用独立条目和品牌/机器人选择；图标偏好按应用 ID 保存。Lab 继续固定示例，与实时数据隔离。
 - 沿用 Pulse 图标、造型、配色与动作，不重画另一套。Quiet Workspace 与早期 WPF 自绘草稿保留为历史/回退，不覆盖 Lab 的原设计套系。
 - 2026-09-22 托盘/应用图标沿用 Pulse 原版圆环与脉冲线，只做 Windows 小尺寸适配；源 SVG、ICO 和来源说明在 `assets/icons/`。托盘静态、按主任务栏 DPI 选帧，不混同桌面每应用的品牌/机器人偏好；常规构建不引入图像工具依赖。
-- 当前开发版本 `1.2.0` 未发布；机器人授权未解决，仅限本机隔离缓存和构建，不公开上传、打包或作为 Release。先读 Lab `systems/pulse-desktop/UPSTREAM.md`。
+- 产品版本以 `VERSION` 为准；是否已有公开预览或正式版以对应 GitHub Release 为准。机器人授权未解决，仅限本机隔离缓存和构建，不公开上传、打包或作为 Release。先读 Lab `systems/pulse-desktop/UPSTREAM.md`。
 
 ## 不可破坏的边界
 

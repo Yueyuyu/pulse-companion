@@ -1,5 +1,7 @@
 # Pulse Companion 架构与维护边界
 
+以下架构图和运行路径描述 **Windows 本机专用版**。Windows 公开品牌版共用 Codex 业务，不包含原版的第三方应用会话读取组件；其他产品只保留单独授权和官方 CLI 等来源。`install.ps1` 仍是本机机器人版入口，不能把其输出拿来发布。Mac 是 [macos/](../macos/) 中单独的原生应用，不依赖 WPF、WebView2 或 Windows 计划任务。[平台支持和安装说明](install.md)列出了差异。
+
 ## 当前入口与职责
 
 `install.ps1` 默认部署 Pulse WebView2 后台版。表现层来自同级 `ui-design-lab/systems/pulse-desktop`；Windows 宿主与真实业务在本仓库。旧 WinForms 胶囊/任务灯保留为回退路径，不是当前默认界面。

@@ -1,127 +1,53 @@
+<p align="center"><img src="assets/icons/upstream/pulse-icon.svg" width="76" height="76" alt="Pulse Companion"></p>
+
 # Pulse Companion
 
-[![Release](https://img.shields.io/github/v/release/Yueyuyu/pulse-companion?display_name=tag&sort=semver)](https://github.com/Yueyuyu/pulse-companion/releases/latest)
+提交 Codex 任务后，可以切到别的窗口继续工作。Pulse Companion 让你看到剩余额度、关注正在执行的对话，并在任务完成或需要处理时提醒你。点一下任务，就能回到对应的 Codex 对话。
 
-Pulse Companion（原 Codex Desktop Companion）是外置、只读的 Windows 桌面伴侣：用 Pulse 风格浮条集中显示 AI 应用的额度与任务状态，离开应用窗口后也能关注任务、接收完成提醒，并一键跳回对应对话。
+**[下载安装](#下载安装) · [支持哪些应用](#支持哪些应用) · [使用与排障](docs/install.md) · [更新记录](CHANGELOG.md)**
 
-当前开发版本为 **`1.2.0`（尚未发布）**。历史版本 [`v1.1.0`](https://github.com/Yueyuyu/pulse-companion/releases/tag/v1.1.0) 仍是 Quiet Workspace 旧版，不包含当前 Pulse 后台界面。本仓库保存当前开发源码，不能把旧 Release 当新版安装包。配套 `ui-design-lab` 的 Pulse 源码位于 `main`，2026-11-25 Antigravity 多周期额度和彩色图标验证对应提交 [`051ff68`](https://github.com/Yueyuyu/ui-design-lab/commit/051ff68cabfd52b3757429b0dd13d5aa7e8e0a9e)，包含此前额度颜色修复；本机机器人资源不在公开仓库中。
+## 下载安装
 
-> 对外产品名已改为 **Pulse Companion**；GitHub 仓库和本地目录已统一为 `pulse-companion`。这是独立社区项目，不是上游 [Pulse](https://github.com/qunqin24/Pulse) 或 OpenAI 的官方 Windows 版本。不会修改或注入 Codex 安装文件。
+**[1.2.0-rc.1 公开预览](https://github.com/Yueyuyu/pulse-companion/releases/tag/v1.2.0-rc.1)**：请在下表选你的系统。稳定版 `v1.1.0` 仍然保留；GitHub 自带的 `Source code (zip)` 是源码，不是安装包。
 
-## 当前功能
+| 你的电脑 | 安装包格式 | 安装后在哪里 |
+| --- | --- | --- |
+| Windows 10/11 x64 | [下载 Windows 安装程序（.exe）](https://github.com/Yueyuyu/pulse-companion/releases/download/v1.2.0-rc.1/Pulse-Companion-1.2.0-Windows-x64-Setup.exe) | 桌面浮条和系统托盘 |
+| Mac，macOS 13 及以上，Apple 芯片或 Intel | [下载 Mac 安装镜像（.dmg）](https://github.com/Yueyuyu/pulse-companion/releases/download/v1.2.0-rc.1/Pulse-Companion-1.2.0-macOS-universal.dmg) | 菜单栏中的 Pulse Companion |
 
-| 能力 | 当前实现 |
-| --- | --- |
-| 后台自动运行 | Windows 当前用户计划任务负责登录启动及每分钟意外退出恢复，不依赖 Codex 子进程链。任一登记应用打开桌面窗口时显示；Codex 退出后停止其任务连接。无任务栏按钮，主动退出会暂停自动恢复，运行 `start.ps1` 后恢复。 |
-| 真实剩余额度 | 从 Codex App Server 读取周额度，用额度环与百分比展示，详情显示重置时间；读取失败时显示不可用，不用示例数字冒充真实数据。 |
-| 实时任务状态 | 汇总需要处理、执行中和最近完成的任务；任务约每 2 秒刷新，额度约每 60 秒主动刷新，也可立即刷新。不是任务完成百分比或推测进度条。 |
-| 重点关注 | 最多关注 5 个任务，按选择顺序持久化；完成后仍保留，离线或暂时未返回时显示暂不可用，不自动删除。 |
-| 完成与待处理提醒 | 任务进入需处理或从执行中变为完成时，在屏幕右下角弹出不抢焦点的通知，点击可打开任务。当前是自绘桌面通知，失败时回退到系统托盘气泡，不是 Windows 通知中心的原生 Toast。 |
-| 点击任务跳转 | 校验任务 UUID 后通过 `codex://threads/<UUID>` 请求 Codex 打开对应对话，不创建或修改任务。 |
-| 紧凑、展开、贴边 | 整个胶囊移动超过 6px 才拖动，轻点仍打开/切换详情，拖后不误点击。详情与托盘提供「自动贴边」开关，默认关、跨重启保存；手动贴边仍可用。允许部分移出屏幕，仅保留可抓取边缘。未固定时移出约 320ms 收起；固定、置顶与贴边独立。 |
-| 按应用分项 | 仅显示正在打开的应用，关闭即隐藏该项、暂停新额度查询；最小化仍显示，仅后台残留进程不显示。约 2 秒更新，三项分页；重开保留授权和图标偏好。Codex 具备完整任务功能；Cursor / Claude / Grok Bot / Antigravity 已有自动读取适配；其他四项明确未接入。不把应用打开当任务执行。 |
-| 自动额度 / 备用登录 | 优先本机接口或有效缓存，再只读借用该桌面应用的当前登录。Cursor 读取指定数据库字段；Claude 按当前组织选有效缓存/会话；Grok Bot 读取自身当前账户。借用令牌仅在内存使用，不刷新、不另存、不输出。独立网页登录须手动选择，自己的备用授权由 DPAPI 保存。支持停止读取（跨重启）与恢复；各产品周期分别展示。本机来源解析成功不等于真实服务端额度验收。 |
+- **Windows：**运行 EXE，按当前用户安装。公开版用应用品牌图标，不包含本机专用的动态机器人；不需要克隆源码、安装 Node.js 或运行脚本。
+- **Mac：**打开 DMG，把 **Pulse Companion.app** 拖入「应用程序」，再从那里启动。它是本项目自己的 macOS 原生应用，不是上游 Pulse 的重新打包。
+- **首次打开前：**Windows EXE 未做发行签名；Mac 应用仅有临时签名，没有 Developer ID 签名或苹果公证。系统可能警告或阻止打开。可用[本版 SHA-256 清单](https://github.com/Yueyuyu/pulse-companion/releases/download/v1.2.0-rc.1/SHA256SUMS.txt)核对文件；如设备要求可信签名，请等待签名版本，不要关闭防护。
 
-新应用逐项支持范围、登录步骤、安全边界和验证情况见 [账户授权与接入矩阵](docs/account-authorization.md)。新增应用任务状态、关注、通知和跳转仍未接通，不能把新增登录等同完整应用适配。
+## 第一次使用
 
-### Antigravity（2026-11-25）
+1. 正常打开并登录 Codex。Companion 使用已有的只读接口；没有可用数据时会标为不可用，不用示例百分比填充。
+2. Windows 点桌面浮条，Mac 点菜单栏图标，查看额度和最近任务。选择星标，最多可保留 5 个重点关注的对话。
+3. 切到其他工作。任务完成或需要处理时会提醒；在面板里点任务即可跳回 Codex。首次连接不会把历史任务全部当作新完成的任务通知。
 
-已加入第 9 个应用：打开 Antigravity 桌面窗口时显示独立彩色品牌图标，可切换机器人；关闭后隐藏、暂停查询，最小化保留。优先查询自带语言服务的本机只读额度接口；不可用时委托已安装的官方 `agy` CLI 执行 `/usage`，不读取 Google OAuth 凭据，不要求重复网页登录。执行前强制验证 CLI ≥ 1.1.11，防止旧版将命令当模型提示词；新进程隐藏运行、限时限量、关闭标准输入，不发送对话、不读取项目。
+![Windows 任务完成后显示的通知示例](docs/images/task-notification-completed-v1.1.0.png)
 
-Gemini / Claude-GPT 等模型组的 5 小时、周等额度分别显示，不求平均、不把缺值画成 100%。来源明确区分「桌面本机接口」与「官方 agy CLI」；CLI 使用它自己的当前登录，可能与桌面账户不同。支持停止/恢复与跨重启保留。**任务、关注、通知、任务跳转尚未接入 Antigravity**。本机已验证官方 CLI 1.5.15 返回真实多周期额度；不等于所有 Antigravity 版本均已验证。
+*上图说明 Windows 的完成通知；不是 Mac 菜单栏或桌面浮条截图。*
 
-界面沿用 Pulse 的图标、黑色侧轨、造型、配色与动作，只做 Windows 适配；业务保留 Companion 的真实数据、关注、通知和跳转。紧凑与展开使用固定透明画布，避免开合时侧轨跳动；透明预留区域不拦截桌面点击。
+## 支持哪些应用
 
-旧版“Codex 左下角额度胶囊 + 白色任务灯”不再是默认界面，也不与 Pulse 实时版同时运行。历史截图、功能和恢复方式见 [Quiet Workspace 旧版说明](docs/legacy-quiet-workspace.md)。
+| 应用 | Windows 品牌版 | macOS 首版 |
+| --- | --- | --- |
+| Codex | 周额度、任务列表、重点关注、完成与需处理提醒、跳转对话 | 周额度、任务列表、重点关注、任务提醒、跳转对话 |
+| Cursor、Claude、Grok Bot | 经你在官方页面单独授权后查询对应账户的额度，不从桌面应用提取登录令牌；能否读取取决于账户和上游接口 | 未接入 |
+| Antigravity | 通过已安装、已登录的官方 agy CLI 查询模型组与周期额度；没有可用 CLI 时显示不可用 | 未接入 |
+| ZCode、Kimi、豆包工作、WorkBuddy | 可识别桌面窗口；未接入额度与任务 | 未接入 |
 
-## 安装与更新
+Windows 支持拖动、展开和贴边，自动贴边默认关闭。应用窗口关闭后对应浮条项隐藏。只有 Codex 接入了任务能力；打开其他应用不代表有任务在运行。[额度来源、账户选择与能力边界 →](docs/account-authorization.md)
 
-当前是**本机源码构建**，不是可直接公开分发的安装包。需要：
+## 数据和更新
 
-- Windows 10/11 x64、Windows PowerShell 5.1、Git、.NET Framework 4.x；
-- 已安装 Microsoft Edge WebView2 Evergreen Runtime；
-- Node.js（建议受支持的 LTS，满足 Lab 依赖要求）及 npm；
-- `ui-design-lab` 的配套 Pulse 源码与 npm 依赖；
-- 合法准备的本机机器人资源。**当前桌面构建即使选品牌图标，也会检查机器人资源；仅克隆两个公开仓库尚不能保证完成当前构建。**
+Companion 不修改或注入 Codex，不创建任务、不发送模型请求，查询本身不消耗模型额度。关注记录保存在当前用户本机；Windows 和 Mac 各自保存，不经本项目的服务器同步。Codex 可以独立更新；上游接口变化时，Companion 可能需要跟进适配。
 
-建议保留同级目录：
+## 文档与开发
 
-```text
-Project/
-├─ pulse-companion/   Pulse Companion 宿主与业务
-└─ ui-design-lab/             Pulse Desktop 共享界面与设计测试
-```
+- [安装、校验、升级与卸载](docs/install.md) · [Windows 后台运行](docs/pulse-background.md) · [故障排查](docs/troubleshooting.md)
+- [从源码构建本机机器人版](docs/new-computer-setup.md) · [Windows 宿主与维护边界](docs/architecture.md) · [验收与发布流程](.github/CI.md)
+- [旧版 Quiet Workspace 图集与回退](docs/legacy-quiet-workspace.md)：`v1.1.0` 的左下角胶囊和任务灯不是当前默认界面。
 
-在包含当前 Pulse 代码和上述依赖的工作树中执行：
-
-```powershell
-.\install.ps1
-.\verify.ps1 -StrictLive    # 需要 Codex 已打开并登录
-```
-
-安装会构建共享界面与 Windows 宿主，部署到独立目录，运行隔离自测，注册当前用户的 `Pulse Companion` 计划任务，再以 `--live --background` 启动。旧 Startup 快捷方式先备份，任务注册校验通过后移除，避免双重自启。任务不保存密码、不提权；旧程序、关注记录和设置保留。部署完成后**不依赖源码路径、Node.js、Lab 或 Vite 服务持续运行**。
-
-后续拉取配套新代码后运行 `.\repair.ps1`；日常打开 Codex 不需要再次安装。非同级 Lab 路径可使用 `.\install-pulse.ps1 -UiLabPath 'D:\Projects\ui-design-lab'`。完整准备、换机和设置迁移见 [新电脑恢复指南](docs/new-computer-setup.md)。
-
-| 命令 | 用途 |
-| --- | --- |
-| `.\install.ps1` / `.\repair.ps1` | 安装或重新构建并部署默认 Pulse 后台版 |
-| `.\start.ps1` / `.\stop.ps1` | 恢复后台运行 / 停止并暂停自动恢复；暂停跨登录保留 |
-| `.\verify.ps1 -StrictLive` | 校验启动项、唯一进程、后台心跳与真实额度/任务就绪 |
-| `.\verify.ps1 -Offline` | Pulse 安装下检查启动项、进程和心跳，不要求实时数据就绪；不等于阻止运行中的程序联网 |
-| `.\rollback-pulse.ps1` | 已有旧程序和启动备份时，恢复 Quiet Workspace 旧版 |
-| `.\uninstall.ps1` | 卸载运行副本与启动项，默认保留设置 |
-
-## 名称与兼容性
-
-产品、GitHub 仓库与源码目录已统一命名；安装/设置等历史标识保留，不迁移个人设置：
-
-| 项目 | 当前值与原因 |
-| --- | --- |
-| 对外产品名 | **Pulse Companion**；README、窗口/托盘文案、程序产品元数据和安装说明统一使用 |
-| GitHub / 源码目录 | `Yueyuyu/pulse-companion` / `pulse-companion`；旧仓库链接由 GitHub 重定向 |
-| 当前宿主文件名 | `PulseWebPreview.exe`，虽然名称保留 Preview，`--live --background` 已是真实后台入口 |
-| 旧版文件名 | `CodexQuotaOverlay.exe` / `CodexQuotaProbe.exe`，保留回退与验证兼容 |
-| 安装目录 | `%LOCALAPPDATA%\CodexDesktopCompanion\pulse\<部署 ID>`；旧版在 `app\` |
-| 后台启动项 | 当前用户的 `\Pulse Companion` 计划任务；旧 `Codex Desktop Companion.lnk` 仅用于迁移校验、备份和旧版回退 |
-| 设置与互斥锁 | `%LOCALAPPDATA%\CodexQuotaOverlay`、`Local\CodexQuotaOverlay.SingleInstance`，避免丢失关注与重复通知 |
-
-`task-light.json` 保存关注与置顶，`pulse-window.json` 保存窗口位置/固定/贴边/缩放，`pulse-applications.json` 保存按应用图标偏好。`pulse-background.pause` 表示用户主动暂停，运行 `start.ps1` 清除。它们是本机个人状态，不应提交 Git。仅显式运行 `.\uninstall.ps1 -RemoveSettings` 才会一并删除设置。
-
-## 与 Codex、额度和更新的关系
-
-- 只调用 `account/rateLimits/read`、`thread/list` 并只读本机任务日志，不创建任务、不发送模型请求，不消耗模型额度；
-- 根据用户明确授权，仅为对应官方额度查询只读复用已登记桌面应用的访问令牌；不读密码、不导出或保存借用凭据、不修改第三方登录。只有 Companion 独立网页登录获得的备用令牌才加密保存；不修改 Codex 安装、账户、会话或更新器；
-- Codex 更新不会覆盖独立运行副本，本项目也不会阻止 Codex 更新；
-- App Server 协议变化仍可能需要兼容修复，失败时显示离线并重试，不伪造正常状态；
-- 默认 Pulse 浮条不依赖 Codex 左下角布局；旧额度胶囊只保留为回退功能。
-
-详见 [架构与维护边界](docs/architecture.md)、[后台运行说明](docs/pulse-background.md) 和 [故障排查](docs/troubleshooting.md)。
-
-## 开发与验证
-
-| 入口 | 数据与用途 |
-| --- | --- |
-| Lab 的 `#/systems/pulse-desktop/playground` | 固定示例，用于设计与多应用测试；不连接真实账户 |
-| `prototypes/pulse-desktop/build-webview.ps1 -Run` | Windows 宿主示例窗口与控制台；不代替实时版 |
-| `prototypes/pulse-desktop/build-webview.ps1 -Verify` | 左右侧 × 4 档应用缩放 × 3 个状态，共 24 组画布/边缘检查 |
-| `prototypes/pulse-desktop/build-webview.ps1 -VerifyLive` | 隔离业务自测 + 真实只读 RPC→DOM 检查，不通知、不跳转、不保存真实关注 |
-| `build.ps1` + `verify.ps1 -Development -Offline` | 共享业务与旧 WinForms 回退实现的构建/离线自测，**不构建 Pulse renderer** |
-
-Pulse 宿主源码仍在 `prototypes/pulse-desktop/webview/`，属于历史目录命名，不代表真实功能尚未接入。示例/实时模式、可执行参数与验证边界见 [宿主开发说明](prototypes/pulse-desktop/README.md)。应用内缩放检查不能替代多物理显示器 DPI、壁纸和正常登录后的人工验收。
-
-无参数运行 EXE 默认是真实后台；示例必须显式使用 `--demo`。`-Verify` / `-VerifyLive` 会显示测试窗口，前者会移动、缩放和切换状态，不属于正常后台行为，执行前应告知用户。后台修复可用 `scripts/test-pulse-background.ps1`、无窗口 `--live-self-test` 和 `verify.ps1 -StrictLive`，不必运行视觉验收。
-
-当前 GitHub Actions 仅构建共享业务与旧 WinForms 回退程序，不产出 Pulse 桌面安装包。它的成功不等于 Pulse Windows 视觉或实时验收通过。当前可执行文件均未签名，首次运行可能触发 SmartScreen 或安全软件扫描。
-
-## 设计来源与分发限制
-
-UI 由 `ui-design-lab/systems/pulse-desktop` 提供，与 Quiet Workspace 独立。上游 [Pulse](https://github.com/qunqin24/Pulse) 的固定来源 commit 为 `2e17225ece661138de9ce9c73b322c7c1b16d753`；品牌 SVG、移植代码和各自许可见 Lab 的 `systems/pulse-desktop/UPSTREAM.md` 与 `licenses/`。
-
-机器人素材的第三方授权仍未解决，不能将上游根许可证当作全部素材的授权。机器人仅在被 Git 忽略的本机缓存中；`bin/pulse-webview-preview` 和部署输出含 `LOCAL-ONLY.json`，**不得上传 GitHub、公开网站或 Release**。独立账户适配不改变这一分发边界。
-
-## 版本规则
-
-[`VERSION`](VERSION) 是产品版本来源；程序集版本与活动应用清单保持一致。`1.2.0` 的变化仍放在 [`CHANGELOG.md` 的 Unreleased](CHANGELOG.md)，不把本机部署 ID 当作发布版本。正式版本使用 `vX.Y.Z` Git Tag 与 Release，只有明确要求发布并满足分发条件后才创建。
-
-产品采用 [Semantic Versioning](https://semver.org/lang/zh-CN/)：不兼容变更增加主版本、向后兼容功能增加次版本、修复增加补丁版本。本次同步名称和说明不另起一个已发布版本。
+Pulse Companion（原 Codex Desktop Companion）是独立社区项目，不是 OpenAI 或 [上游 Pulse](https://github.com/qunqin24/Pulse) 的官方发行版。Windows 界面来自配套的 [UI Design Lab](https://github.com/Yueyuyu/ui-design-lab/tree/051ff68cabfd52b3757429b0dd13d5aa7e8e0a9e/systems/pulse-desktop)；[第三方来源和分发边界](https://github.com/Yueyuyu/ui-design-lab/blob/051ff68cabfd52b3757429b0dd13d5aa7e8e0a9e/systems/pulse-desktop/UPSTREAM.md) 区分了可公开的品牌资产与不得随包分发的机器人资源。

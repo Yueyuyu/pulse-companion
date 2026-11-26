@@ -46,7 +46,7 @@ ButtonFinish=完成(&F)
 
 [Code]
 var
-  Quiesced, Activated: Boolean;
+  Quiesced, Activated, ActivationFailed: Boolean;
 
 function RunHelper(Script, Action: String): Integer;
 var
@@ -78,6 +78,7 @@ begin
   Code := RunHelper(Script, 'Check');
   case Code of
     0: ;
+    11: Log('Repairing an incomplete, positively identified installation of this public package.');
     21: Result := '已发现活动的本机专用版或旧版，公开版不会覆盖。可以继续使用原版；如要换版，请先另存原部署、启动备份和个人设置，再使用原版卸载入口。';
     23: Result := '需要 Microsoft Edge WebView2 Evergreen Runtime。请从 https://developer.microsoft.com/microsoft-edge/webview2/ 安装后重试。';
     else Result := '安装目录、已有安装记录或同名计划任务无法安全验证；未覆盖。';
@@ -92,14 +93,33 @@ var
   Code: Integer;
 begin
   if CurStep = ssPostInstall then begin
+    { Inno 已在 PerformInstall 中提交卸载日志，并会捕获 ssPostInstall 异常。
+      不用 RaiseException 声称回滚；保留真实卸载登记，让同一包能安全重试。 }
+    ActivationFailed := True;
     Code := RunHelper(ExpandConstant('{app}\install-tools\public-lifecycle.ps1'), 'Activate');
-    if (Code <> 0) and (Code <> 10) then
-      RaiseException('未能注册当前用户的后台任务，公开版安装未完成。');
+    if (Code <> 0) and (Code <> 10) then begin
+      Log('Pulse files installed but activation failed; retry the same setup or use its registered uninstaller. Exit code 30.');
+      exit;
+    end;
+    ActivationFailed := False;
     Activated := True;
     if Code = 10 then begin
       Log('Pulse installed; immediate launch deferred. Use the Start menu or log on again.');
       if not WizardSilent then MsgBox('安装已完成，但当前会话没有立即启动。可以在开始菜单打开 Pulse Companion，或等下次登录。', mbInformation, MB_OK);
     end;
+  end;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  if ActivationFailed then Result := 30 else Result := 0;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and ActivationFailed then begin
+    WizardForm.FinishedHeadingLabel.Caption := 'Pulse Companion 未能完成激活';
+    WizardForm.FinishedLabel.Caption := '程序文件已安装，但后台设置未完成。请检查当前用户的任务计划和安装目录权限，再运行同一安装包重试；也可在 Windows「已安装的应用」中卸载。个人设置和备份不会被删除。';
   end;
 end;
 

@@ -13,7 +13,11 @@ $exe=Join-Path $deployment 'PulseWebPreview.exe'
 $manifest=Join-Path $root 'pulse-install.json'
 function Read-Record {
     if(Test-Path -LiteralPath $manifest){
-        try {return (Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)}
+        try {
+            $record=Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+            if($null -eq $record){throw 'Empty record'}
+            return $record
+        }
         catch {throw 'E22: 安装记录不可验证。'}
     }
 }
@@ -24,6 +28,36 @@ function Test-PublicRecord($Record) {
 }
 function Get-OwnedTask {
     try {return Get-PulseBackgroundTask} catch {throw 'E22: 无法验证同名计划任务属于当前用户的 Pulse。'}
+}
+function Test-PublicRepairOwner {
+    # ssPostInstall 在 Inno 提交卸载记录之后。只允许原包修复自己留下的任务未激活副本。
+    # 不执行现存文件；目录、单独一份 public-package.json 或同名任务均不是正面归属证据。
+    $hive=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        $key=$hive.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall\PulseCompanion.PublicBrand_is1')
+        if(!$key){return $false}
+        try {
+            foreach($field in @('Inno Setup: App Path','InstallLocation')){
+                $location=[string]$key.GetValue($field)
+                if(!$location -or !(Test-SamePath $location $deployment)){return $false}
+            }
+            if(([string]$key.GetValue('UninstallString')) -notmatch '^"([^"]+)"(?: /LOG)?$'){return $false}
+            $uninstaller=$Matches[1]
+            if(![IO.Path]::IsPathRooted($uninstaller) -or !(Test-SamePath (Split-Path -Parent $uninstaller) $deployment) -or
+                (Split-Path -Leaf $uninstaller) -notmatch '^unins[0-9]{3}\.exe$'){return $false}
+        } finally {$key.Dispose()}
+        foreach($f in @($uninstaller,[IO.Path]::ChangeExtension($uninstaller,'.dat'))){
+            if(!(Test-Path -LiteralPath $f -PathType Leaf) -or ((Get-Item -LiteralPath $f -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){return $false}
+        }
+        foreach($f in $contract.files){if(!(Test-Path -LiteralPath (Join-Path $deployment $f) -PathType Leaf)){return $false}}
+        foreach($name in @('public-package.json','public-lifecycle.ps1','common.ps1','pulse-background-task.ps1')){
+            $fromSetup=Join-Path $PSScriptRoot $name
+            $installed=Join-Path $deployment ('install-tools/'+$name)
+            if((Get-Item -LiteralPath $installed).Length -ne (Get-Item -LiteralPath $fromSetup).Length -or
+                (Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $fromSetup).Hash){return $false}
+        }
+        return $true
+    } catch {return $false} finally {$hive.Dispose()}
 }
 function Assert-SafePaths {
     $paths=@($root,(Join-Path $root 'pulse'),$deployment,$manifest)
@@ -40,9 +74,12 @@ function Assert-InstallOwnership([bool]$BeforeCopy) {
     if($record -and !(Test-PublicRecord $record)){throw 'E21: 拒绝覆盖活动的本机专用版、旧版或其他发行版。'}
     if((Test-Path -LiteralPath (Get-CompanionStartupShortcut)) -or (Test-Path -LiteralPath (Get-LegacyStartupShortcut))){throw 'E21: 现有启动快捷方式未迁移。'}
     $task=Get-OwnedTask
-    if($task -and (!$record -or !(Test-SamePath $task.Definition.Actions.Item(1).Path $exe))){throw 'E21: 另一 Pulse 部署仍拥有后台入口。'}
-    if(!$record -and $BeforeCopy -and (Test-Path -LiteralPath $deployment)){throw 'E22: 目标目录已存在且无公开版安装记录。'}
+    $retry=$false
+    if(!$record -and ($task -or ($BeforeCopy -and (Test-Path -LiteralPath $deployment)))){$retry=Test-PublicRepairOwner}
+    if($task -and ((!$record -and !$retry) -or !(Test-SamePath $task.Definition.Actions.Item(1).Path $exe))){throw 'E21: 另一 Pulse 部署仍拥有后台入口。'}
+    if(!$record -and $BeforeCopy -and (Test-Path -LiteralPath $deployment) -and !$retry){throw 'E22: 目标目录已存在且没有可验证的本公开包登记。'}
     if(!$record -and (Test-Path -LiteralPath (Join-Path $root 'app/CodexQuotaOverlay.exe'))){throw 'E21: 发现旧版安装。'}
+    return $retry
 }
 function Assert-WebView {
     foreach($hive in @([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryHive]::LocalMachine)){
@@ -81,8 +118,8 @@ function Start-IfAllowed($Task) {
 try {
     Assert-SafePaths
     switch($Action){
-        'Check' {Assert-InstallOwnership $true;Assert-WebView}
-        'Quiesce' {Assert-InstallOwnership $true;Stop-PublicProcess (Get-OwnedTask)}
+        'Check' {$retry=Assert-InstallOwnership $true;Assert-WebView;if($retry){exit 11}}
+        'Quiesce' {[void](Assert-InstallOwnership $true);Stop-PublicProcess (Get-OwnedTask)}
         'Recover' {
             if(Test-PublicRecord (Read-Record)){
                 $task=Get-OwnedTask
@@ -90,7 +127,7 @@ try {
             }
         }
         'Activate' {
-            Assert-InstallOwnership $false
+            [void](Assert-InstallOwnership $false)
             if($ProductVersion -notmatch '^\d+\.\d+\.\d+$'){throw 'E22: 无效安装版本。'}
             foreach($f in $contract.files){if(!(Test-Path -LiteralPath (Join-Path $deployment $f) -PathType Leaf)){throw 'E22: 安装文件不完整。'}}
             $prior=Read-Record
@@ -98,16 +135,20 @@ try {
             $xml=if($priorTask){$priorTask.Xml}else{$null}
             $temp=Join-Path $root ('pulse-public-'+[Guid]::NewGuid().ToString('N')+'.tmp')
             $record=[ordered]@{schemaVersion=1;release=$contract.deploymentId;version=$ProductVersion;installedAtUtc=[DateTime]::UtcNow.ToString('o');localOnly=$false;distribution=$contract.distribution;startupMode='scheduled-task';backgroundTask='Pulse Companion'}
+            $taskWriteStarted=$false
             try {
                 [IO.File]::WriteAllText($temp,($record | ConvertTo-Json),[Text.UTF8Encoding]::new($false))
+                $taskWriteStarted=$true
                 Register-PulseBackgroundTask $exe
                 $registered=Get-OwnedTask
                 if(!$registered -or !(Test-SamePath $registered.Definition.Actions.Item(1).Path $exe)){throw 'E22: 无法核实注册结果。'}
                 if($prior){[IO.File]::Replace($temp,$manifest,[System.Management.Automation.Language.NullString]::Value)}
                 else {[IO.File]::Move($temp,$manifest)}
             } catch {
-                if($xml){Restore-PulseBackgroundTask $xml}
-                else {$t=Get-OwnedTask;if($t -and (Test-SamePath $t.Definition.Actions.Item(1).Path $exe)){(Get-PulseTaskFolder).DeleteTask('Pulse Companion',0)}}
+                if($taskWriteStarted){
+                    if($xml){Restore-PulseBackgroundTask $xml}
+                    else {$t=Get-OwnedTask;if($t -and (Test-SamePath $t.Definition.Actions.Item(1).Path $exe)){(Get-PulseTaskFolder).DeleteTask('Pulse Companion',0)}}
+                }
                 throw
             } finally {if(Test-Path -LiteralPath $temp){Remove-Item -LiteralPath $temp}}
             # 注册和记录提交后，立即运行仅是便利功能。会话不可用时向安装器明确返回已安装、暂缓启动。

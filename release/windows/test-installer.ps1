@@ -36,11 +36,29 @@ function Invoke-Setup([string]$Phase) {
     $log=Join-Path $scratch ($Phase+'.log')
     return Run-Quiet $setup ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG="'+$log+'"')
 }
+function Invoke-SetupDenyingActiveRecord([string]$Phase) {
+    # 只拒绝在新建的 runner 测试根本身创建文件，不向子目录继承；无需生产故障开关。
+    $originalAcl=Get-Acl -LiteralPath $root
+    $deniedAcl=Get-Acl -LiteralPath $root
+    $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
+    $deny=[Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::CreateFiles,
+        [Security.AccessControl.InheritanceFlags]::None,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Deny)
+    $deniedAcl.AddAccessRule($deny)
+    try {
+        Set-Acl -LiteralPath $root -AclObject $deniedAcl
+        return Invoke-Setup $Phase
+    } finally {Set-Acl -LiteralPath $root -AclObject $originalAcl}
+}
 function Test-ActiveTask {
     $t=Get-PulseBackgroundTask
     if(!$t -or !$t.Enabled){return $false}
     Assert-PulseRecoveryPolicy $t.Definition
     return (Test-SamePath $t.Definition.Actions.Item(1).Path (Join-Path $deploy 'PulseWebPreview.exe'))
+}
+function Test-Uninstalled {
+    $deadline=[DateTime]::UtcNow.AddSeconds(20)
+    while((Test-Path -LiteralPath (Join-Path $deploy 'unins000.exe')) -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 200}
+    return (!(Test-Path -LiteralPath $deploy) -and !(Test-Path -LiteralPath $manifest) -and !(Test-Path -LiteralPath (Join-Path $menu 'Pulse Companion.lnk')) -and !(Test-Path -LiteralPath $registry) -and !(Get-PulseBackgroundTask))
 }
 $success=$false
 try {
@@ -60,7 +78,29 @@ try {
     Assert-Check ($refusal -ne 0 -and [IO.File]::ReadAllText($manifest) -ceq $fixture -and !(Test-Path -LiteralPath $deploy) -and !(Get-PulseBackgroundTask)) 'refuse-active-local-install-without-changing-it'
     Assert-Check ((Get-Content -Raw -LiteralPath (Join-Path $scratch 'refuse-local-only.log')) -match 'Pulse lifecycle: Check -> 21') 'refusal-is-ownership-check'
     Remove-Item -LiteralPath $manifest # 仅移除本脚本创建且已验证内容的合成冲突记录。
-    Assert-Check ((Invoke-Setup 'fresh') -eq 0) 'fresh-install-exited-zero'
+    # 只有目录、甚至有同名元数据也不能冒充 Inno 登记过的副本。只清理本测试自己创建的空目录/具体文件。
+    $unknownTools=Join-Path $deploy 'install-tools'
+    [void][IO.Directory]::CreateDirectory($unknownTools)
+    $lookalike=Join-Path $unknownTools 'public-package.json'
+    [IO.File]::Copy((Join-Path $PSScriptRoot 'public-package.json'),$lookalike)
+    Assert-Check ((Invoke-Setup 'refuse-unregistered-folder') -ne 0 -and (Test-Path -LiteralPath $lookalike) -and !(Test-Path -LiteralPath $registry)) 'unregistered-lookalike-directory-remains-untouched'
+    Assert-Check ((Get-Content -Raw -LiteralPath (Join-Path $scratch 'refuse-unregistered-folder.log')) -match 'Pulse lifecycle: Check -> 22') 'unregistered-directory-is-not-eligible-for-repair'
+    [IO.File]::Delete($lookalike)
+    [IO.Directory]::Delete($unknownTools,$false)
+    [IO.Directory]::Delete($deploy,$false)
+    $failed=Invoke-SetupDenyingActiveRecord 'first-activation-denied'
+    $failureLog=Get-Content -Raw -LiteralPath (Join-Path $scratch 'first-activation-denied.log')
+    Assert-Check ($failed -eq 30 -and $failureLog -match 'Pulse lifecycle: Check -> 0' -and $failureLog -match 'Pulse lifecycle: Activate -> 1\b') 'post-install-activation-failure-is-not-reported-as-success'
+    Assert-Check (!(Test-Path -LiteralPath $manifest) -and !(Get-PulseBackgroundTask) -and (Test-Path -LiteralPath $registry) -and (Test-Path -LiteralPath (Join-Path $deploy 'unins000.exe'))) 'failed-first-activation-leaves-only-a-registered-repairable-package'
+    foreach($f in $hashes.Keys){Assert-Check ((Get-FileHash -LiteralPath $f).Hash -eq $hashes[$f]) ('preserved-on-failed-activation-'+(Split-Path -Leaf $f))}
+    $installedContract=Join-Path $deploy 'install-tools/public-package.json'
+    $originalContract=[IO.File]::ReadAllBytes($installedContract)
+    try {
+        [IO.File]::AppendAllText($installedContract,' ')
+        Assert-Check ((Invoke-Setup 'reject-mismatched-package') -ne 0 -and (Get-Content -Raw -LiteralPath (Join-Path $scratch 'reject-mismatched-package.log')) -match 'Pulse lifecycle: Check -> 22') 'inno-registration-alone-cannot-authorize-a-mismatched-package'
+    } finally {[IO.File]::WriteAllBytes($installedContract,$originalContract)}
+    Assert-Check ((Invoke-Setup 'repair-activation') -eq 0) 'same-package-retry-exited-zero'
+    Assert-Check ((Get-Content -Raw -LiteralPath (Join-Path $scratch 'repair-activation.log')) -match 'Pulse lifecycle: Check -> 11') 'retry-recognizes-exact-inno-owned-installation'
     $active=Get-Content -Raw -LiteralPath $manifest | ConvertFrom-Json
     Assert-Check ($active.distribution -ceq 'public-brand' -and !$active.localOnly -and $active.version -ceq $version -and $active.release -ceq $expected.deploymentId) 'public-active-record-and-version'
     Assert-Check (Test-ActiveTask) 'current-user-logon-one-minute-recovery-task'
@@ -81,16 +121,25 @@ try {
     $shortcut=Join-Path $menu 'Pulse Companion.lnk'
     $link=(New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
     Assert-Check ((Test-Path -LiteralPath $shortcut) -and $link.Arguments.Contains('public-lifecycle.ps1') -and $link.Arguments.EndsWith('-Action Start') -and (Test-Path -LiteralPath $registry)) 'start-menu-and-registered-uninstaller'
+    $priorRecordHash=(Get-FileHash -LiteralPath $manifest).Hash
+    Assert-Check ((Invoke-SetupDenyingActiveRecord 'upgrade-activation-denied') -eq 30 -and (Get-FileHash -LiteralPath $manifest).Hash -eq $priorRecordHash -and (Test-ActiveTask)) 'failed-upgrade-retains-prior-active-record-and-recovery-task'
+    foreach($f in $hashes.Keys){Assert-Check ((Get-FileHash -LiteralPath $f).Hash -eq $hashes[$f]) ('preserved-on-failed-upgrade-'+(Split-Path -Leaf $f))}
     Assert-Check ((Invoke-Setup 'upgrade') -eq 0) 'upgrade-same-package-exited-zero'
     $updated=Get-Content -Raw -LiteralPath $manifest | ConvertFrom-Json
     Assert-Check ($updated.release -ceq $active.release -and $updated.installedAtUtc -ne $active.installedAtUtc -and (Test-ActiveTask)) 'upgrade-refreshed-same-owned-deployment'
     foreach($f in $hashes.Keys){Assert-Check ((Get-FileHash -LiteralPath $f).Hash -eq $hashes[$f]) ('preserved-on-upgrade-'+(Split-Path -Leaf $f))}
     $uninstall=Join-Path $deploy 'unins000.exe'
     Assert-Check ((Run-Quiet $uninstall '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART') -eq 0) 'uninstall-exited-zero'
-    $deadline=[DateTime]::UtcNow.AddSeconds(20)
-    while((Test-Path -LiteralPath $uninstall) -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 200}
-    Assert-Check (!(Test-Path -LiteralPath $deploy) -and !(Test-Path -LiteralPath $manifest) -and !(Test-Path -LiteralPath $shortcut) -and !(Test-Path -LiteralPath $registry) -and !(Get-PulseBackgroundTask)) 'uninstall-removed-runtime-registration-menu-and-task'
+    Assert-Check (Test-Uninstalled) 'uninstall-removed-runtime-registration-menu-and-task'
     foreach($f in $hashes.Keys){Assert-Check ((Get-FileHash -LiteralPath $f).Hash -eq $hashes[$f]) ('preserved-on-uninstall-'+(Split-Path -Leaf $f))}
+    # 与上面的修复场景不同，这次从没有部署、登记、菜单和任务的状态正常安装，不注入故障。
+    Assert-Check ((Invoke-Setup 'fresh') -eq 0) 'fresh-install-exited-zero'
+    $freshLog=Get-Content -Raw -LiteralPath (Join-Path $scratch 'fresh.log')
+    $freshRecord=Get-Content -Raw -LiteralPath $manifest | ConvertFrom-Json
+    Assert-Check ($freshLog -match 'Pulse lifecycle: Check -> 0\b' -and $freshLog -match 'Pulse lifecycle: Activate -> 0\b' -and
+        $freshRecord.distribution -ceq 'public-brand' -and $freshRecord.release -ceq $expected.deploymentId -and (Test-ActiveTask)) 'clean-first-install-activated-and-registered-without-repair'
+    Assert-Check ((Run-Quiet $uninstall '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART') -eq 0 -and (Test-Uninstalled)) 'clean-first-install-uninstalls-without-leftover-registration'
+    foreach($f in $hashes.Keys){Assert-Check ((Get-FileHash -LiteralPath $f).Hash -eq $hashes[$f]) ('preserved-on-clean-install-and-uninstall-'+(Split-Path -Leaf $f))}
     $success=$true
 } finally {
     $report=[IO.Path]::GetFullPath($ReportPath)

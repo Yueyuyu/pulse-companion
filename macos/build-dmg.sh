@@ -67,7 +67,7 @@ for arch in arm64 x86_64; do
     "$src"/Sources/*.swift -o "$tmp/PulseCompanion-$arch"
 done
 xcrun lipo -create "$tmp/PulseCompanion-arm64" "$tmp/PulseCompanion-x86_64" -output "$exe"
-xcrun lipo -verify_arch arm64 x86_64 "$exe"
+xcrun lipo "$exe" -verify_arch arm64 x86_64
 chmod 755 "$exe"
 # 临时签名只用于完整性和 Apple Silicon 可执行性，不是 Developer ID，不声称已公证。
 codesign --force --sign - --timestamp=none "$app"
@@ -82,7 +82,7 @@ mounted_exe="$installed/Contents/MacOS/PulseCompanion"
 [[ -L "$mount/Applications" && "$(readlink "$mount/Applications")" == /Applications ]]
 [[ "$(plutil -extract CFBundleShortVersionString raw "$installed/Contents/Info.plist")" == "$version" ]]
 [[ -s "$installed/Contents/Resources/Pulse.icns" && -s "$installed/Contents/Resources/NOTICE.txt" && -s "$installed/Contents/Resources/Pulse-Apache-2.0.txt" ]]
-xcrun lipo -verify_arch arm64 x86_64 "$mounted_exe"
+xcrun lipo "$mounted_exe" -verify_arch arm64 x86_64
 codesign --verify --strict --all-architectures "$installed"
 "$mounted_exe" --self-test
 hdiutil detach "$mount" -quiet

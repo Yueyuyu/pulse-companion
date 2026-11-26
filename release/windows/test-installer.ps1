@@ -115,6 +115,12 @@ try {
     try {
         [IO.File]::AppendAllText($installedContract,' ')
         Assert-Check ((Invoke-Setup 'reject-mismatched-package') -ne 0 -and (Get-Content -Raw -LiteralPath (Join-Path $scratch 'reject-mismatched-package.log')) -match 'Pulse lifecycle: Check -> 22') 'inno-registration-alone-cannot-authorize-a-mismatched-package'
+        $sameSize=[byte[]]$originalContract.Clone()
+        $sameSize[$sameSize.Length-1]=$sameSize[$sameSize.Length-1] -bxor 1
+        [IO.File]::WriteAllBytes($installedContract,$sameSize)
+        $byteRefusal=Invoke-Setup 'reject-same-size-change'
+        $byteLog=Get-Content -Raw -LiteralPath (Join-Path $scratch 'reject-same-size-change.log')
+        Assert-Check ($byteRefusal -ne 0 -and $byteLog -match 'Pulse lifecycle: Check -> 22' -and $byteLog -match 'Pulse repair proof: tool-bytes') 'same-length-single-byte-change-is-not-the-original-package'
     } finally {[IO.File]::WriteAllBytes($installedContract,$originalContract)}
     Assert-Check ((Invoke-Setup 'repair-activation') -eq 0) 'same-package-retry-exited-zero'
     Assert-Check ((Get-Content -Raw -LiteralPath (Join-Path $scratch 'repair-activation.log')) -match 'Pulse lifecycle: Check -> 11') 'retry-recognizes-exact-inno-owned-installation'

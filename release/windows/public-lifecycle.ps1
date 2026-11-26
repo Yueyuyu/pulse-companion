@@ -59,10 +59,22 @@ function Test-PublicRepairOwner {
         foreach($name in @('public-package.json','public-lifecycle.ps1','common.ps1','pulse-background-task.ps1')){
             $fromSetup=Join-Path $PSScriptRoot $name
             $installed=Join-Path $deployment ('install-tools/'+$name)
-            $proof='tool-size'
-            if((Get-Item -LiteralPath $installed).Length -ne (Get-Item -LiteralPath $fromSetup).Length){return $false}
-            $proof='tool-hash'
-            if((Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $fromSetup).Hash){return $false}
+            # Inno 可能继承 pwsh 的模块路径并启动 WinPS 5.1，此时没有 Get-FileHash。
+            # 用只读流逐字节核对这四个小文件。不同长度先拒绝，既不加载外部模块，也不读入整份可疑文件。
+            $proof='tool-read'
+            $sourceStream=[IO.File]::OpenRead($fromSetup)
+            try {
+                $installedStream=[IO.File]::OpenRead($installed)
+                try {
+                    $proof='tool-size'
+                    $length=$sourceStream.Length
+                    if($installedStream.Length -ne $length){return $false}
+                    $proof='tool-bytes'
+                    for($offset=0L;$offset -lt $length;$offset++){
+                        if($installedStream.ReadByte() -ne $sourceStream.ReadByte()){return $false}
+                    }
+                } finally {$installedStream.Dispose()}
+            } finally {$sourceStream.Dispose()}
         }
         $proof='matched'
         return $true

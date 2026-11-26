@@ -56,7 +56,7 @@ begin
   if Pos('pulse-repair-proof:', S) <> 1 then exit;
   Stage := Copy(S, Length('pulse-repair-proof:') + 1, Length(S));
   if (Stage <> '') and (Pos('|', Stage) = 0) and
-      (Pos('|' + Stage + '|', '|registration|registration-location|uninstaller-command|uninstaller-path|uninstaller-files|payload|tool-size|tool-hash|matched|') <> 0) then
+      (Pos('|' + Stage + '|', '|registration|registration-location|uninstaller-command|uninstaller-path|uninstaller-files|payload|tool-read|tool-size|tool-bytes|matched|') <> 0) then
     Log('Pulse repair proof: ' + Stage);
 end;
 

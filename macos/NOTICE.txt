@@ -1,0 +1,6 @@
+Pulse Companion is an independent community project, not an official OpenAI or Pulse application.
+The Pulse app icon is from qunqin24/Pulse (commit 2e17225ece661138de9ce9c73b322c7c1b16d753),
+AppIcon/pulse-icon.svg, by qunqin24 / Pulse contributors, licensed under Apache-2.0.
+https://github.com/qunqin24/Pulse/blob/2e17225ece661138de9ce9c73b322c7c1b16d753/AppIcon/pulse-icon.svg
+Modification: rasterized into a macOS icon set. The license is included as Pulse-Apache-2.0.txt.
+No upstream robot artwork or executable is included.

@@ -15,3 +15,13 @@ PR 比较共同祖先与当前分支；主分支 push 比较本次完整提交�
 - 程序测试仍需要编译，但不会安装或重启本机 Pulse，也不读取真实账户。
 - 另用 `scripts/test-pulse-host.ps1` 编译 Pulse 宿主并执行隔离账户/任务自测，不需要 Lab 或机器人素材；不启动真实账户、不发送通知、不跳转任务。
 - 以上不包含 Pulse renderer 和实机视觉验收，不代表当前 Pulse WebView2 产品已经完成发行验收；不会公开上传本机机器人产物。
+
+## 桌面安装包
+
+独立的 [Desktop installers](workflows/desktop-installers.yml) 工作流只读仓库，在干净的 Windows 和 macOS runner 上构建**公开品牌版**。不会操作维护者的本机安装，也没有发布权限。
+
+- **Windows x64**：从固定的公共 UI 源码构建，验证安装、再次运行安装程序和卸载，只上传被验证的 Setup EXE。原来只上传 `bin/*.exe` 的旧版构建不能用作替代。
+- **macOS 通用版**：Swift 原生业务测试通过后构建两种架构的同一应用，将 .app 装入 DMG，在挂载卷上校验架构、代码签名结构和原生自测。当场没有已登录的真实 Codex 账户，不能把 runner 的测试记为真实订阅验收。
+- 普通 push / PR 只构建验收，不保留可下载程序。获得分发确认后，对选定提交手动运行该工作流并启用 `collect_packages`；两端都通过后才会汇总 `SHA256SUMS.txt`，按 `VERSION` 和两个完整文件名筛选附件。只发布**同一提交、同一成功运行**的两个文件和校验清单。Actions 的 artifact ZIP 是传输容器，不是用户应下载的安装包。
+
+发布前先核对提交 SHA、CI、两份许可说明和签名状态；建立草稿后比对 Release 附件的 SHA-256 与 CI 清单，确认三项齐全再公开。缺少发行证书时只可明确标为未经发行签名/公证的预览，不宣称可直接通过 SmartScreen 或 Gatekeeper。不能从本机 `.local-cache`、`bin/pulse-webview-preview` 或 `%LOCALAPPDATA%` 补附件。

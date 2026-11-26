@@ -1,0 +1,123 @@
+name: Desktop installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      collect_packages:
+        description: '仅在获准分发时保留此提交的预览安装包和校验值'
+        required: true
+        default: false
+        type: boolean
+  push:
+    branches: [main, 'codex/release/**']
+    paths:
+      - '.github/workflows/desktop-installers.yml'
+      - 'release/**'
+      - 'macos/**'
+      - 'src/**'
+      - 'prototypes/pulse-desktop/**'
+      - 'assets/icons/**'
+      - 'scripts/**'
+      - '*.ps1'
+      - 'VERSION'
+  pull_request:
+    paths:
+      - '.github/workflows/desktop-installers.yml'
+      - 'release/**'
+      - 'macos/**'
+      - 'src/**'
+      - 'prototypes/pulse-desktop/**'
+      - 'assets/icons/**'
+      - 'scripts/**'
+      - '*.ps1'
+      - 'VERSION'
+
+# 只构建和验收；即使是标签或手动触发也不能自行创建 Release。
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows x64 · 安装、升级、卸载
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: 构建公开品牌图标安装包
+        shell: pwsh
+        run: ./release/windows/build-installer.ps1 -OutputDirectory "$env:RUNNER_TEMP/public-out"
+      - name: 在临时 Windows 用户环境验证安装包
+        id: verified
+        shell: pwsh
+        run: |
+          $version = (Get-Content -Raw VERSION).Trim()
+          $file = "$env:RUNNER_TEMP/public-out/Pulse-Companion-$version-Windows-x64-Setup.exe"
+          ./release/windows/test-installer.ps1 -InstallerPath $file
+          "file=$file" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'workflow_dispatch' && inputs.collect_packages
+        with:
+          name: windows-installer
+          path: ${{ steps.verified.outputs.file }}
+          if-no-files-found: error
+  macos:
+    name: macOS · 通用应用与 DMG
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 运行原生业务测试
+        run: bash macos/test.sh
+      - name: 构建并挂载验证 DMG
+        id: verified
+        shell: bash
+        run: |
+          bash macos/build-dmg.sh "$RUNNER_TEMP/public-out"
+          version="$(tr -d '\r\n' < VERSION)"
+          file="$RUNNER_TEMP/public-out/Pulse-Companion-$version-macOS-universal.dmg"
+          test -s "$file"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'workflow_dispatch' && inputs.collect_packages
+        with:
+          name: macos-installer
+          path: ${{ steps.verified.outputs.file }}
+          if-no-files-found: error
+  checksums:
+    name: 核对发布文件及 SHA-256
+    needs: [windows, macos]
+    if: github.event_name == 'workflow_dispatch' && inputs.collect_packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-installer
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-installer
+          path: dist
+      - name: 核对文件：只允许两个当前产品的已验收安装包
+        shell: bash
+        run: |
+          version="$(tr -d '\r\n' < VERSION)"
+          cd dist
+          test "$(ls -1A | wc -l)" -eq 2
+          sha256sum -- "Pulse-Companion-$version-Windows-x64-Setup.exe" "Pulse-Companion-$version-macOS-universal.dmg" > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installer-checksums
+          path: dist/SHA256SUMS.txt
+          if-no-files-found: error

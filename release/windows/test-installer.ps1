@@ -36,9 +36,11 @@ function Invoke-Setup([string]$Phase) {
     $log=Join-Path $scratch ($Phase+'.log')
     $code=Run-Quiet $setup ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG="'+$log+'"')
     # 只输出自有阶段名和退出码，不上传完整 Inno 日志、账户信息或本机路径。
-    $steps=[regex]::Matches((Get-Content -Raw -LiteralPath $log),'Pulse lifecycle: (Check|Quiesce|Activate|Recover) -> (-?\d+)') |
+    $logText=Get-Content -Raw -LiteralPath $log
+    $steps=[regex]::Matches($logText,'Pulse lifecycle: (Check|Quiesce|Activate|Recover) -> (-?\d+)') |
         ForEach-Object {$_.Groups[1].Value+'='+$_.Groups[2].Value}
-    Write-Host ("installer-phase={0} exit={1} lifecycle=[{2}]" -f $Phase,$code,($steps -join ','))
+    $proof=[regex]::Matches($logText,'Pulse repair proof: ([a-z-]+)') | ForEach-Object {$_.Groups[1].Value}
+    Write-Host ("installer-phase={0} exit={1} lifecycle=[{2}] repair-proof=[{3}]" -f $Phase,$code,($steps -join ','),($proof -join ','))
     return $code
 }
 function Invoke-SetupDenyingActiveRecord([string]$Phase) {

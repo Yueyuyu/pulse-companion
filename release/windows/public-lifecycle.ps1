@@ -32,32 +32,41 @@ function Get-OwnedTask {
 function Test-PublicRepairOwner {
     # ssPostInstall 在 Inno 提交卸载记录之后。只允许原包修复自己留下的任务未激活副本。
     # 不执行现存文件；目录、单独一份 public-package.json 或同名任务均不是正面归属证据。
+    $proof='registration'
     $hive=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryView]::Registry64)
     try {
         $key=$hive.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall\PulseCompanion.PublicBrand_is1')
         if(!$key){return $false}
         try {
+            $proof='registration-location'
             foreach($field in @('Inno Setup: App Path','InstallLocation')){
                 $location=[string]$key.GetValue($field)
                 if(!$location -or !(Test-SamePath $location $deployment)){return $false}
             }
+            $proof='uninstaller-command'
             if(([string]$key.GetValue('UninstallString')) -notmatch '^"([^"]+)"(?: /LOG)?$'){return $false}
             $uninstaller=$Matches[1]
+            $proof='uninstaller-path'
             if(![IO.Path]::IsPathRooted($uninstaller) -or !(Test-SamePath (Split-Path -Parent $uninstaller) $deployment) -or
                 (Split-Path -Leaf $uninstaller) -notmatch '^unins[0-9]{3}\.exe$'){return $false}
         } finally {$key.Dispose()}
+        $proof='uninstaller-files'
         foreach($f in @($uninstaller,[IO.Path]::ChangeExtension($uninstaller,'.dat'))){
             if(!(Test-Path -LiteralPath $f -PathType Leaf) -or ((Get-Item -LiteralPath $f -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){return $false}
         }
+        $proof='payload'
         foreach($f in $contract.files){if(!(Test-Path -LiteralPath (Join-Path $deployment $f) -PathType Leaf)){return $false}}
         foreach($name in @('public-package.json','public-lifecycle.ps1','common.ps1','pulse-background-task.ps1')){
             $fromSetup=Join-Path $PSScriptRoot $name
             $installed=Join-Path $deployment ('install-tools/'+$name)
-            if((Get-Item -LiteralPath $installed).Length -ne (Get-Item -LiteralPath $fromSetup).Length -or
-                (Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $fromSetup).Hash){return $false}
+            $proof='tool-size'
+            if((Get-Item -LiteralPath $installed).Length -ne (Get-Item -LiteralPath $fromSetup).Length){return $false}
+            $proof='tool-hash'
+            if((Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $fromSetup).Hash){return $false}
         }
+        $proof='matched'
         return $true
-    } catch {return $false} finally {$hive.Dispose()}
+    } catch {return $false} finally {$hive.Dispose();Write-Host ('pulse-repair-proof:'+$proof)}
 }
 function Assert-SafePaths {
     $paths=@($root,(Join-Path $root 'pulse'),$deployment,$manifest)

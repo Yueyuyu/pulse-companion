@@ -48,6 +48,18 @@ ButtonFinish=完成(&F)
 var
   Quiesced, Activated, ActivationFailed: Boolean;
 
+procedure LogRepairProof(const S: String; const Error, FirstLine: Boolean);
+var
+  Stage: String;
+begin
+  { 日志只接收固定检查名，不写子进程原始输出、用户路径或账户信息。 }
+  if Pos('pulse-repair-proof:', S) <> 1 then exit;
+  Stage := Copy(S, Length('pulse-repair-proof:') + 1, Length(S));
+  if (Stage <> '') and (Pos('|', Stage) = 0) and
+      (Pos('|' + Stage + '|', '|registration|registration-location|uninstaller-command|uninstaller-path|uninstaller-files|payload|tool-size|tool-hash|matched|') <> 0) then
+    Log('Pulse repair proof: ' + Stage);
+end;
+
 function RunHelper(Script, Action: String): Integer;
 var
   Args: String;
@@ -55,7 +67,7 @@ var
 begin
   Args := '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + Script + '" -Action ' + Action;
   if Action = 'Activate' then Args := Args + ' -ProductVersion {#ProductVersion}';
-  if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Args, '', SW_HIDE, ewWaitUntilTerminated, Code)
+  if ExecAndLogOutput(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Args, '', SW_HIDE, ewWaitUntilTerminated, Code, @LogRepairProof)
   then Result := Code else Result := -1;
   Log('Pulse lifecycle: ' + Action + ' -> ' + IntToStr(Result));
 end;
